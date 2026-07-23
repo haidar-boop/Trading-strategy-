@@ -21,6 +21,7 @@ The loader tolerates missing OI by disabling the OI filter for uncovered spans.
 from __future__ import annotations
 
 import io
+import re
 import time
 import zipfile
 from datetime import date, timedelta
@@ -31,6 +32,16 @@ import requests
 
 BASE = "https://data.binance.vision/data/futures/um"
 DEFAULT_RAW = Path(__file__).resolve().parents[2] / "artifacts" / "raw"
+
+_SYMBOL_RE = re.compile(r"[A-Z0-9]{1,20}")
+
+
+def _validate_symbol(symbol: str) -> str:
+    """Binance perp symbols are uppercase alphanumerics. Reject anything else so a crafted
+    value cannot traverse the cache path or redirect the fetch URL (e.g. '../../etc')."""
+    if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol):
+        raise ValueError(f"invalid symbol: {symbol!r}")
+    return symbol
 
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "coilbreak-phase2/1.0"})
@@ -55,9 +66,16 @@ def _get(url: str, timeout: int = 60, retries: int = 4) -> bytes | None:
 
 
 def _read_zip_csv(content: bytes) -> pd.DataFrame:
-    """Extract the single CSV from a Binance dump zip. Detects header presence."""
+    """Extract the single CSV from a Binance dump zip. Detects header presence.
+
+    Reads only the first member as a STREAM (never extractall to disk), so there is no
+    zip-slip path-traversal surface; guards an empty/malformed archive.
+    """
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
-        name = zf.namelist()[0]
+        names = zf.namelist()
+        if not names:
+            raise ValueError("empty zip archive")
+        name = names[0]
         with zf.open(name) as fh:
             head = fh.read(64)
     # Header detection: if the first byte-run before a comma is non-numeric, there's a header.
@@ -97,6 +115,7 @@ def _month_range(start: date, end: date):
 def download_klines(symbol: str, start: date, end: date,
                     raw_dir: Path = DEFAULT_RAW) -> pd.DataFrame:
     """Monthly 1m klines for [start, end], concatenated. Caches per-month parquet."""
+    symbol = _validate_symbol(symbol)
     out_dir = raw_dir / "klines" / symbol
     out_dir.mkdir(parents=True, exist_ok=True)
     frames = []
@@ -128,6 +147,7 @@ def download_klines(symbol: str, start: date, end: date,
 def download_funding(symbol: str, start: date, end: date,
                      raw_dir: Path = DEFAULT_RAW) -> pd.DataFrame:
     """Monthly 8h funding prints. Columns: calc_time[ms], funding_interval_hours, last_funding_rate."""
+    symbol = _validate_symbol(symbol)
     out_dir = raw_dir / "funding" / symbol
     out_dir.mkdir(parents=True, exist_ok=True)
     frames = []
@@ -187,6 +207,7 @@ def download_metrics(symbol: str, start: date, end: date,
     Only published from ~2021; missing days are cached as empty sentinels and the loader
     disables the OI filter for uncovered spans.
     """
+    symbol = _validate_symbol(symbol)
     out_dir = raw_dir / "metrics" / symbol
     out_dir.mkdir(parents=True, exist_ok=True)
     all_days = []
