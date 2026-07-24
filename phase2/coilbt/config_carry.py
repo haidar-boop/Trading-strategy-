@@ -22,6 +22,12 @@ class ParamsCarry:
     EXIT_FUND_BPS: float = 0.5    # unwind when funding decays to <= this (bps/8h); grid {0,0.5,1}
     BASIS_STOP_BPS: float = 100.0 # unwind if basis widens against us by >= this (bps); grid {50,100,200}
     NOTIONAL_FRAC: float = 0.5    # perp notional as fraction of equity (delta-neutral); NOT gridded
+    # OI-confirmation / squeeze-rejection gate (#20). When True, reject an otherwise-valid entry
+    # when the elevated funding looks like a SHORT SQUEEZE about to invert: price rising while OI
+    # falls (short covering) => funding spike is fragile. This is a RISK filter, not a return
+    # predictor (see funding_predict.py: point-forecasting funding does not beat the naive
+    # threshold). Default False so existing runs/tests are unchanged; needs OI-loaded data.
+    USE_OI_GATE: bool = False
 
 
 @dataclass(frozen=True)

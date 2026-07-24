@@ -59,6 +59,18 @@ def build_carry_table(sd: SymbolData, spot_min: pd.DataFrame, consts: ConstantsC
     liq_at = np.where(raw >= 0, liq_30[np.clip(raw, 0, day_ms.size - 1)], np.nan)
     dvol_at = np.where(raw >= 0, dvol_30[np.clip(raw, 0, day_ms.size - 1)], np.nan)
 
+    # --- OI-confirmation / squeeze tell (#20), causal ---
+    # squeeze signature: price RISING while OI FALLING over the trailing window (short covering).
+    # A funding spike in that state is fragile (about to invert). ok_oi=False flags it for rejection.
+    # Computed from the last daily bars known at t; NaN (no OI history) -> gate passes (ok_oi=True).
+    ret5 = d["close"].pct_change(5).to_numpy(dtype=float)              # 5-day price momentum
+    oi_lvl = sd.oi_daily["oi_level"].reindex(d.index).to_numpy(dtype=float)
+    oi_chg5 = pd.Series(oi_lvl, index=d.index).pct_change(5).to_numpy(dtype=float)  # 5-day OI change
+    ret5_at = np.where(raw >= 0, ret5[np.clip(raw, 0, day_ms.size - 1)], np.nan)
+    oichg_at = np.where(raw >= 0, oi_chg5[np.clip(raw, 0, day_ms.size - 1)], np.nan)
+    squeeze = (ret5_at > 0.02) & (oichg_at < -0.02)   # +2% price & -2% OI over 5d = covering rally
+    ok_oi = ~np.where(np.isnan(ret5_at) | np.isnan(oichg_at), False, squeeze)
+
     ev = event_timestamps_ms(extra=extra_events).to_numpy(dtype="int64")
     win = int(filters.EVENT_EXCL_MINUTES * MS_PER_MIN)
     if ev.size:
@@ -76,6 +88,7 @@ def build_carry_table(sd: SymbolData, spot_min: pd.DataFrame, consts: ConstantsC
         "ok_liq": liq_at >= filters.LIQ_FLOOR_USD,
         "ok_event": ok_event,
         "ok_mech": interval == consts.FUNDING_INTERVAL_HOURS,
+        "ok_oi": ok_oi,             # False = squeeze tell (rising price + falling OI); gate on demand
     }, index=pd.to_datetime(dt, unit="ms", utc=True))
     tbl.index.name = "decision"
     return tbl
@@ -84,5 +97,7 @@ def build_carry_table(sd: SymbolData, spot_min: pd.DataFrame, consts: ConstantsC
 def raw_signal_carry(tbl: pd.DataFrame, params) -> pd.Series:
     """Per-decision entry flag: True where we open a cash-and-carry (short perp + long spot)."""
     ok = (tbl["valid_fill"] & tbl["ok_liq"] & tbl["ok_event"] & tbl["ok_mech"])
+    if getattr(params, "USE_OI_GATE", False) and "ok_oi" in tbl.columns:
+        ok = ok & tbl["ok_oi"]
     enter = ok & (tbl["f_now"] >= params.ENTRY_FUND_BPS * BPS)
     return enter.fillna(False)

@@ -12,7 +12,7 @@
 | 14 | Adversarial data sims | ✅ done — accounting invariant holds under corrupt/missing/delayed/NaN data |
 | 16 | Literature review | ✅ done — `LITERATURE.md`, real cites (incl. Crypto-Carry paper confirming #19 decay) |
 | 1,7,15 | Data-gated (L2, cross-exchange, options/on-chain) | ✅ roadmap done — `DATA_ROADMAP.md` (do: CVD free, cross-venue funding free, Deribit skew) |
-| 3,10,20 | Funding **prediction**/persistence + "why is funding high" | ⏳ next major build (the headline conceptual upgrade) |
+| 3,10,20 | Funding **prediction**/persistence + "why is funding high" | ✅ done — **measured negative for point-forecast; only the squeeze RISK gate survives** |
 | 2 | Regime classifier | ⏳ pending (HMM already ported) |
 | 13 | Better exit logic (forecast/OI/vol) | ⏳ pending (depends on #3) |
 | 4 | Spot-leg execution realism | ⏳ pending |
@@ -20,9 +20,12 @@
 | 17 | Confidence intervals / param stability | ⏳ pending (quick) |
 | 12 | Stablecoin / depeg risk | ⏳ pending (discussion + scenario) |
 
-Done this pass: **7 of the substantive items + the data roadmap**, all committed with real measured
-results. The biggest single remaining upgrade is **#3/#10/#20 (predict funding instead of react)** —
-a proper model build that deserves its own focused effort.
+Done this pass: **8 of the substantive items + the data roadmap**, all committed with real measured
+results. The headline conceptual upgrade **#3/#10/#20 (predict funding instead of react)** is now
+built and **measured — and the answer is honest and mostly negative**: point-forecasting funding
+does not beat the naive threshold at the entry decision, and the exogenous "why is funding high"
+features are symbol-unstable (overfitting). The only piece that survives is the **squeeze-rejection
+RISK gate**, kept as measured tail insurance (near-zero in-sample cost), not as a return edge.
 
 
 
@@ -103,6 +106,86 @@ Analytical stress of a representative position (equity $10k, perp $5k, gross $10
   hedge stays intact. Isolated margin breaks the hedge and is the dominant tail.
 - The second: a **gap-aware basis stop** — a stop at 1% does not save you if the basis gaps to 8%
   (−4%); size `notional_frac` so a gapped blowout is survivable.
+
+## #3 / #10 / #20 Funding prediction + "why is funding high" — DONE (measured, and mostly negative)
+
+This was billed as "the headline conceptual upgrade": stop *reacting* to high funding and start
+*predicting* it. I built the leak-free study myself (`funding_predict.py`) rather than delegate,
+because leakage is the #1 way to manufacture a fake predictive edge. The verdict is honest and
+mostly negative — the naive threshold the strategy already uses is close to optimal.
+
+### The prior question first: is funding forecastable *beyond its own autocorrelation?*
+
+Funding is near-random-walk persistent (literature: AR(1) ≈ 0.97–0.998; confirmed here — a pure
+persistence baseline "next-K funding == funding now" already scores **OOS R² ≈ 0.46–0.47** on
+BTC/ETH). So the ONLY forecast that matters is one that beats persistence. Walk-forward, leak-free
+(in-fold standardization, embargo, target strictly forward), 5,000+ / 4,000+ OOS test points:
+
+| symbol | R² persist | R² ridge (all feats) | **incremental R²** |
+|---|---|---|---|
+| BTCUSDT | 0.471 | 0.569 | **+0.098** |
+| ETHUSDT | 0.458 | 0.557 | **+0.100** |
+
+A feature model adds ~+0.10 R² on the *point forecast*. But two tests strip that of its shine:
+
+**Ablation — does the EXOGENOUS "why is funding high" story (OI/vol) add anything?**
+
+| symbol | persist | funding-only | oi+vol-only | all | **exog gain (all − funding)** |
+|---|---|---|---|---|---|
+| BTCUSDT | 0.471 | **0.603** | −1.899 | 0.569 | **−0.035** |
+| ETHUSDT | 0.458 | 0.457 | −0.189 | 0.557 | **+0.100** |
+
+The exogenous features are **inconsistent and not robust**: on BTC, funding-autocorrelation *alone*
+(R²=0.603) **beats** the full model — adding OI/vol *hurts*. On ETH they help (+0.10). Standalone,
+OI/vol are pure noise (negative R² on both). Helping one symbol, hurting the other, useless alone —
+that is the overfitting signature the literature warned of, not a real driver. The honest read:
+whatever point-forecast power exists is **better use of the funding autocorrelation**, which the
+naive threshold already exploits.
+
+**Decision-level test — does a forecast gate collect more realized funding at the entry threshold?**
+
+| symbol | gate | select % | realized fwd funding (bps) | hit % |
+|---|---|---|---|---|
+| BTC | current (naive) | 6.8% | **2.88** | 100% |
+| BTC | forecast (ridge) | 7.9% | 2.50 | 96.7% |
+| ETH | current (naive) | 6.3% | **2.86** | 100% |
+| ETH | forecast (ridge) | 5.5% | 2.93 | 100% |
+
+At the actual carry entry threshold the forecast gate does **not** beat the naive current-funding
+gate (BTC slightly worse, ETH a tie). The +0.10 R² lives in the *middle* of the funding
+distribution, not at the *high tail* where carry enters — exactly where it would need to help.
+
+**Conclusion for #3/#10:** do NOT build a funding return-predictor. It does not beat the threshold
+out-of-sample on the decision that matters, and its apparent point-forecast edge is symbol-unstable.
+This is the measured, negative answer — and it's more valuable than a shiny model that overfits.
+
+### #20 "Why is funding high" — collapsed to one actionable RISK gate
+
+Research (2 streams) + my measurement converge: the 7-way causal taxonomy (ETF demand / retail FOMO
+/ short squeeze / MM hedging / illiquidity / listing / cross-venue) is a **strong overfitting
+magnet** on noisy free OI. The one economically-grounded, leak-safe signal is the **squeeze
+tell**: elevated funding + **price rising while OI falls** = short covering, a funding spike about
+to invert. Implemented as an optional entry gate (`USE_OI_GATE`, default off) and **measured on the
+real carry** (`squeeze_gate.py`), 2× stressed cost:
+
+| symbol | gate | trades | rejected | net | Sharpe |
+|---|---|---|---|---|---|
+| BTC | OFF | 27 | — | +704 | 4.19 |
+| BTC | **ON** | 25 | 2 | +672 | **4.33** |
+| ETH | OFF | 29 | — | +773 | 3.64 |
+| ETH | **ON** | 28 | 1 | +741 | 3.63 |
+
+Nearly neutral in-sample: it removes ~4% of net, nudges BTC Sharpe up (4.19→4.33), leaves ETH flat.
+501/357 decisions were squeeze-flagged in the feed but only 2/1 coincided with a high-funding entry
+— the squeeze→flip event **rarely overlaps an entry in the calm sample**. So, exactly like the
+tail-stress finding: this is **cheap insurance against a tail the backtest underweights**, justified
+by mechanism, not by an in-sample edge. It is NOT presented as a Sharpe improvement — it is a risk
+filter with a measured (near-zero) in-sample cost.
+
+Leakage is pinned by `test_funding_predict.py`: a walk-forward fed **pure-noise features** must
+score OOS R² ≈ 0 — if the pipeline peeked at the future it couldn't. It scores < 0.05. ✅
+
+---
 
 ## #9 Capacity — DONE
 
