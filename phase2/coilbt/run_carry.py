@@ -195,7 +195,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
         "mc_envelope_pass": bool(boot.passed),
         "mc_jitter_pass": bool(jitter["passed"]) if jitter else False,
         # informational secondary read (NOT the pass/fail verdict, which stays on the daily DSR):
-        "per_trade_dsr_pass": bool(ptd["passes_own"]) if ptd else False,
+        "per_trade_dsr_pass": bool(ptd["passes_eff"]) if ptd else False,
     }
     verdict = _verdict(checks, oos_pnls.size, spec.OOS_MIN_TRADES)
 
