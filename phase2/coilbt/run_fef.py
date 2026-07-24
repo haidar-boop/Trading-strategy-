@@ -26,7 +26,7 @@ from .strategy_fef import build_decision_table
 from .montecarlo import block_bootstrap_envelope
 from .walkforward import generate_folds, trial_sharpes, walk_forward_select
 from .run_phase2 import (REF_EQUITY, ARTIFACTS, _beta_in_costume, _portfolio_daily_returns,
-                         _run_jitter, _verdict)
+                         _run_jitter, _verdict, compute_pbo, rich_metrics)
 
 
 def _best_month_excision(deployed: pd.Series) -> dict:
@@ -102,6 +102,8 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, risk_frac=0.01, v
     jitter = _run_jitter(oos_meta, data, cm, spec)
     beta = _beta_in_costume(deployed, data.get("BTCUSDT"))
     excision = _best_month_excision(deployed)
+    pbo, pbo_n = compute_pbo(trial_oos)
+    rmets = rich_metrics(r_oos)
 
     checks = {
         "dsr_pass": bool(dsr.dsr >= spec.DSR_CONF),
@@ -109,6 +111,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, risk_frac=0.01, v
         "trades_pass": bool(oos_pnls.size >= spec.OOS_MIN_TRADES),
         "mintrl_pass": bool(dsr.n_obs >= dsr.min_trl),
         "single_episode_pass": bool(excision["pass"]),
+        "pbo_pass": bool(np.isfinite(pbo) and pbo < 0.5),
         "mc_envelope_pass": bool(boot.passed),
         "mc_jitter_pass": bool(jitter["passed"]) if jitter else False,
     }
@@ -135,6 +138,9 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, risk_frac=0.01, v
             "jitter_median_terminal": jitter["jitter_median"] if jitter else None,
             "beta_corr_to_btc": beta["corr"],
             "total_funding_pnl": float(sum(t.funding_pnl for t in oos_meta)),
+            "pbo": pbo,
+            "pbo_n_configs": pbo_n,
+            "rich": rmets,
         },
         "checks": checks, "verdict": verdict, "runtime_sec": round(time.time() - t0, 1),
     }
@@ -168,6 +174,15 @@ def _print_report(r):
     print(f"  MC real vs p5 terminal {m['mc_real_terminal']:.4f} vs {m['mc_p5_terminal']:.4f}")
     print(f"  jitter med vs base     {m['jitter_median_terminal']} vs {m['jitter_base_terminal']}")
     print(f"  corr to BTC B&H        {m['beta_corr_to_btc']:.3f}")
+    if m.get("pbo") is not None:
+        pbo = m["pbo"]
+        print(f"  PBO / CSCV             {pbo:.3f}  over {m.get('pbo_n_configs')} configs "
+              f"({'overfit-prone' if (pbo == pbo and pbo >= 0.5) else 'ok'})")
+    rm = m.get("rich") or {}
+    if rm:
+        parts = [f"{k}={rm[k]:+.3f}" for k in ["Sortino", "Calmar", "MaxDD", "Ulcer", "CVaR95"]
+                 if k in rm and rm[k] == rm[k]]
+        print("  rich (deployed OOS):  ", "  ".join(parts))
     print("-" * 72)
     for k, ok in r["checks"].items():
         print(f"    [{'PASS' if ok else 'FAIL'}] {k}")

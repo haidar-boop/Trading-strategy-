@@ -28,6 +28,37 @@ from .data.loader import SymbolData, load_symbol
 from .montecarlo import _replay_terminal, block_bootstrap_envelope
 from .backtest import run_symbol
 from .walkforward import generate_folds, trial_sharpes, walk_forward_select
+from .quantlib.pbo import pbo_cscv
+from .quantlib import metrics as qmetrics
+
+
+def compute_pbo(trial_oos: dict, n_subsets: int = 14):
+    """Real-data PBO/CSCV over the grid: stack every variant's concatenated-OOS daily
+    returns into a [T x N] matrix (all variants share the same OOS windows) and run CSCV.
+    Returns (pbo, n_configs). PBO ~ 0.5 => the in-sample-best config is overfit noise."""
+    cols, labels = [], []
+    length = None
+    for lab, r in trial_oos.items():
+        if r is None or r.size == 0:
+            continue
+        if length is None:
+            length = r.size
+        if r.size == length:
+            cols.append(r.to_numpy(dtype=float))
+            labels.append(lab)
+    if len(cols) < 2:
+        return float("nan"), len(cols)
+    M = np.column_stack(cols)
+    pbo, _ = pbo_cscv(M, n_subsets=n_subsets)
+    return pbo, len(cols)
+
+
+def rich_metrics(returns) -> dict:
+    """Sortino/Calmar/MaxDD/Ulcer/CVaR summary of a daily-return series (ported metrics)."""
+    r = np.asarray(returns, dtype=float)
+    if r.size < 5:
+        return {}
+    return qmetrics.summary(r, ann=365)
 
 REF_EQUITY = 10_000.0
 ARTIFACTS = Path(__file__).resolve().parents[1] / "artifacts"
@@ -115,12 +146,17 @@ def run(symbols: list[str], start: date, end: date, spec: ValidationSpec,
     # 5) Beta-in-a-costume: correlate deployed OOS daily returns with BTC daily returns.
     beta = _beta_in_costume(deployed, data.get("BTCUSDT"))
 
+    # 6) PBO/CSCV (ported) on the real-data grid + rich metrics of the deployed record.
+    pbo, pbo_n = compute_pbo(trial_oos)
+    rmets = rich_metrics(r_oos)
+
     # ----- pass/fail -----
     checks = {
         "dsr_pass": bool(dsr.dsr >= spec.DSR_CONF),
         "pf_pass": bool(pf == float("inf") or (np.isfinite(pf) and pf >= spec.OOS_PF_MIN)),
         "trades_pass": bool(oos_trade_pnls.size >= spec.OOS_MIN_TRADES),
         "mintrl_pass": bool(dsr.n_obs >= dsr.min_trl),
+        "pbo_pass": bool(np.isfinite(pbo) and pbo < 0.5),
         "mc_envelope_pass": bool(boot.passed),
         "mc_jitter_pass": bool(jitter["passed"]) if jitter else False,
     }
@@ -148,6 +184,9 @@ def run(symbols: list[str], start: date, end: date, spec: ValidationSpec,
             "jitter_base_terminal": jitter["base_terminal"] if jitter else None,
             "jitter_median_terminal": jitter["jitter_median"] if jitter else None,
             "beta_corr_to_btc": beta["corr"],
+            "pbo": pbo,
+            "pbo_n_configs": pbo_n,
+            "rich": rmets,
         },
         "checks": checks,
         "verdict": verdict,
@@ -155,6 +194,7 @@ def run(symbols: list[str], start: date, end: date, spec: ValidationSpec,
     }
     if verbose:
         _print_report(result)
+        _print_rich(result)
     ARTIFACTS.mkdir(exist_ok=True)
     (ARTIFACTS / "phase2_result.json").write_text(json.dumps(result, indent=2, default=float))
     _save_equity(deployed)
@@ -241,6 +281,10 @@ def _print_report(r: dict):
     print(f"  MC real vs p5 terminal {m['mc_real_terminal']:.4f} vs {m['mc_p5_terminal']:.4f}")
     print(f"  Jitter med vs base     {m['jitter_median_terminal']} vs {m['jitter_base_terminal']}")
     print(f"  Corr to BTC B&H        {m['beta_corr_to_btc']:.3f}")
+    pbo = m.get("pbo")
+    if pbo is not None:
+        print(f"  PBO / CSCV             {pbo:.3f}  over {m.get('pbo_n_configs')} configs "
+              f"({'overfit-prone' if (pbo == pbo and pbo >= 0.5) else 'ok'})")
     print("-" * 72)
     for k, ok in r["checks"].items():
         print(f"    [{'PASS' if ok else 'FAIL'}] {k}")
@@ -248,6 +292,15 @@ def _print_report(r: dict):
     print("VERDICT:", r["verdict"])
     print(f"(runtime {r['runtime_sec']}s)")
     print("=" * 72 + "\n")
+
+
+def _print_rich(r: dict):
+    rm = r["metrics"].get("rich") or {}
+    if not rm:
+        return
+    order = ["CAGR", "AnnVol", "Sharpe", "Sortino", "Calmar", "MaxDD", "Ulcer", "CVaR95", "TailRatio"]
+    parts = [f"{k}={rm[k]:+.3f}" for k in order if k in rm and rm[k] == rm[k]]
+    print("  rich metrics (deployed OOS):", "  ".join(parts), "\n")
 
 
 def _save_equity(deployed: pd.Series):

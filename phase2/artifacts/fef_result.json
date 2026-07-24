@@ -71,7 +71,22 @@
     "jitter_base_terminal": -625.1960232235197,
     "jitter_median_terminal": -494.4963873720363,
     "beta_corr_to_btc": -0.17139878369619996,
-    "total_funding_pnl": 346.80950250654035
+    "total_funding_pnl": 346.80950250654035,
+    "pbo": 0.5495337995337995,
+    "pbo_n_configs": 384,
+    "rich": {
+      "CAGR": -0.042355476109807055,
+      "AnnVol": 0.10070398781933641,
+      "Sharpe": -0.3797648942304912,
+      "Sortino": -0.23620700966968966,
+      "Calmar": -0.1623426014443892,
+      "MaxDD": -0.2609017949260596,
+      "Ulcer": 14.990252917035797,
+      "VaR95": 0.004489805433727224,
+      "CVaR95": 0.012827486855620246,
+      "TailRatio": 0.47609965790716113,
+      "Omega": 0.855516868526776
+    }
   },
   "checks": {
     "dsr_pass": false,
@@ -79,9 +94,10 @@
     "trades_pass": true,
     "mintrl_pass": false,
     "single_episode_pass": false,
+    "pbo_pass": false,
     "mc_envelope_pass": true,
     "mc_jitter_pass": false
   },
-  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, pf_pass, mintrl_pass, single_episode_pass, mc_jitter_pass",
-  "runtime_sec": 123.4
+  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, pf_pass, mintrl_pass, single_episode_pass, pbo_pass, mc_jitter_pass",
+  "runtime_sec": 189.8
 }

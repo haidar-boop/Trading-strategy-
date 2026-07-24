@@ -21,6 +21,8 @@ leg it is forced to hold.
 | Minimum Track Record Length | **∞** | ≤ 1461 | ❌ |
 | OOS profit factor | **0.77** | ≥ 1.3 | ❌ |
 | Single-best-month excision | total −0.15, ex-best −0.25 | ex-best > 0 | ❌ |
+| **PBO / CSCV** (combined platform) | **0.55 over 384 configs** | < 0.5 | ❌ |
+| Rich metrics (deployed OOS) | Sortino −0.24 · Calmar −0.16 · MaxDD −26% | — | — |
 | MC block-bootstrap envelope | (weak test) | above p5 | ✅ (weak) |
 | MC entry-timing jitter | median < 0.5×base (both negative) | median ≥ 0.5×base | ❌ |
 
