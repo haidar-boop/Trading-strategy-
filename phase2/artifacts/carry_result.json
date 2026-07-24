@@ -1,38 +1,31 @@
 {
   "strategy": "Delta-neutral cash-and-carry",
   "window": {
-    "start": "2020-01-01",
-    "end": "2025-12-31",
+    "start": "2021-01-01",
+    "end": "2024-12-31",
     "symbols": [
       "BTCUSDT",
-      "ETHUSDT"
+      "ETHUSDT",
+      "SOLUSDT"
     ]
   },
   "n_variants": 33,
-  "n_folds": 8,
-  "oos_days": 1461,
-  "oos_trades": 18,
+  "n_folds": 4,
+  "oos_days": 731,
+  "oos_trades": 26,
   "exit_reasons": {
     "funding_decay": 0,
     "basis_stop": 0,
-    "time_cap": 18
+    "time_cap": 26
   },
   "selected_per_fold": [
     [
-      "2022-01-01",
-      "EF3_XF0_BS200"
-    ],
-    [
-      "2022-07-01",
-      "EF3_XF0_BS200"
-    ],
-    [
       "2023-01-01",
-      "EF3_XF0_BS200"
+      "EF3_XF0.5_BS200"
     ],
     [
       "2023-07-01",
-      "EF3_XF0_BS100"
+      "EF3_XF0.5_BS100"
     ],
     [
       "2024-01-01",
@@ -40,50 +33,42 @@
     ],
     [
       "2024-07-01",
-      "EF1.5_XF0_BS100"
-    ],
-    [
-      "2025-01-01",
-      "EF1.5_XF0_BS100"
-    ],
-    [
-      "2025-07-01",
-      "EF1.5_XF0_BS100"
+      "EF3_XF0_BS100"
     ]
   ],
   "metrics": {
-    "oos_sharpe_annualized": 3.2014693613524847,
-    "psr_vs_0": 0.9999999999999987,
-    "dsr": 7.445451666098383e-05,
-    "dsr_deflation_benchmark": 0.24794799819613486,
+    "oos_sharpe_annualized": 2.8324984104124993,
+    "psr_vs_0": 0.9999930194818266,
+    "dsr": 1.0484233459813467e-16,
+    "dsr_deflation_benchmark": 0.42865345229723034,
     "dsr_n_trials": 1000,
     "min_trl_obs": Infinity,
-    "profit_factor": Infinity,
-    "total_funding_pnl": 825.18485,
-    "total_basis_pnl": 42.97231840981525,
-    "total_cost": 258.14229360970864,
-    "total_net_pnl": 610.0148748001067,
-    "ex_best_month": 0.03576497774186605,
-    "best_month_total": 0.06100148748001066,
-    "mc_real_terminal": 1.062851002570244,
-    "mc_p5_terminal": 1.0372588747528748,
-    "jitter_base_terminal": -3756.355842557098,
-    "jitter_median_terminal": -3768.7807666436074,
-    "beta_corr_to_btc": -0.014421569112483698,
-    "pbo": 0.06351981351981352,
+    "profit_factor": 210.03878986950264,
+    "total_funding_pnl": 1310.9643,
+    "total_basis_pnl": 79.20714767739216,
+    "total_cost": 766.9123825445928,
+    "total_net_pnl": 623.2590651327993,
+    "ex_best_month": 0.032927234138746014,
+    "best_month_total": 0.06232590651327994,
+    "mc_real_terminal": 1.0641779680738774,
+    "mc_p5_terminal": 1.029489192687814,
+    "jitter_base_terminal": -5644.308360148978,
+    "jitter_median_terminal": -5595.013367465426,
+    "beta_corr_to_btc": -0.09065621984394877,
+    "pbo": 0.0,
     "pbo_n_configs": 33,
     "rich": {
-      "CAGR": 0.015344841702136902,
-      "AnnVol": 0.004760293427548953,
-      "Sharpe": 3.2014693613524847,
-      "Sortino": 1.5704758952389082,
-      "Calmar": 6.733817423845693,
-      "MaxDD": -0.002278773054909089,
-      "Ulcer": 0.05934508653085169,
-      "VaR95": -0.0,
-      "CVaR95": 1.1458551300315687e-05,
-      "TailRatio": NaN,
-      "Omega": 4.984779124453027
+      "CAGR": 0.031546130005706274,
+      "AnnVol": 0.01098688089752447,
+      "Sharpe": 2.8324984104124993,
+      "Sortino": 2.1127653313454715,
+      "Calmar": 6.293041111994876,
+      "MaxDD": -0.005012859354371235,
+      "Ulcer": 0.15769316683436477,
+      "VaR95": 0.0001295166496935792,
+      "CVaR95": 0.0011940414830023838,
+      "TailRatio": 7.131821274757765,
+      "Omega": 2.4045750308186573
     }
   },
   "checks": {
@@ -96,6 +81,6 @@
     "mc_envelope_pass": false,
     "mc_jitter_pass": false
   },
-  "verdict": "INSUFFICIENT EVIDENCE \u2014 do not deploy (OOS trades 18 < floor 30); statistical checks are moot below the floor.",
-  "runtime_sec": 44.2
+  "verdict": "INSUFFICIENT EVIDENCE \u2014 do not deploy (OOS trades 26 < floor 30); statistical checks are moot below the floor.",
+  "runtime_sec": 21.5
 }

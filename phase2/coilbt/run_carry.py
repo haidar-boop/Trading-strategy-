@@ -18,7 +18,6 @@ import pandas as pd
 from . import stats
 from .config_carry import (ConstantsCarry, CostsCarry, FiltersCarry, ValidationCarry,
                            full_grid_carry)
-from .costs import CostModel
 from .data.download import download_spot_klines
 from .data.loader import load_symbol
 from .backtest_carry import build_aligned, run_symbol_carry
@@ -26,8 +25,48 @@ from .strategy_carry import build_carry_table
 from .montecarlo import block_bootstrap_envelope
 from .walkforward import generate_folds, trial_sharpes, walk_forward_select
 from .run_phase2 import (REF_EQUITY, ARTIFACTS, _beta_in_costume, _portfolio_daily_returns,
-                         _run_jitter, _verdict, compute_pbo, rich_metrics)
+                         _verdict, compute_pbo, rich_metrics)
 from .run_fef import _best_month_excision
+
+
+def _run_jitter_carry(oos_meta, aligns, spec):
+    """Two-leg entry-timing jitter for the delta-neutral carry. Shift each trade's entry by
+    +/- MC_JITTER_MINUTES bars (keeping the hold length), RE-DERIVE both legs' fills from the
+    aligned perp+spot bars, hold funding fixed (time-based, unaffected by a 5-min shift) and
+    costs fixed, then sum to a PORTFOLIO terminal per path and take the median. Carry is
+    price-hedged, so a correct two-leg jitter should be ~flat (that is the point of the test)."""
+    if not oos_meta:
+        return None
+    rng = np.random.default_rng(0)
+    k = spec.MC_JITTER_MINUTES
+    base = float(sum(t.net_pnl for t in oos_meta))
+    tr = []
+    for t in oos_meta:
+        al = aligns.get(t.symbol)
+        if al is None:
+            continue
+        mt, ppo, ppc, pso, psc, _ = al
+        si = int(np.searchsorted(mt, t.entry_ms, side="left"))
+        xi = int(np.searchsorted(mt, t.exit_ms, side="left"))
+        tr.append((t, mt, ppo, pso, si, xi))
+    if not tr:
+        return None
+    terms = np.empty(spec.MC_PATHS)
+    for pth in range(spec.MC_PATHS):
+        tot = 0.0
+        for (t, mt, ppo, pso, si, xi) in tr:
+            n = mt.size
+            sh = int(rng.integers(-k, k + 1))
+            si2 = int(np.clip(si + sh, 0, n - 1))
+            xi2 = int(np.clip(si2 + (xi - si), 0, n - 1))
+            basis_e = ppo[si2] - pso[si2]
+            basis_x = ppo[xi2] - pso[xi2]
+            tot += t.qty * (basis_e - basis_x) + t.funding_pnl - t.cost  # funding & cost fixed
+        terms[pth] = tot
+    med = float(np.median(terms))
+    passed = bool(base > 0 and med >= spec.MC_FAIL_TERMINAL_FRAC * base)
+    return {"passed": passed, "base_terminal": base, "jitter_median": med,
+            "jitter_p5": float(np.percentile(terms, 5))}
 
 
 def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5, verbose=True):
@@ -36,7 +75,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
     for sym in symbols:
         if verbose:
             print(f"[load] {sym} perp+spot ...", flush=True)
-        data[sym] = load_symbol(sym, start, end)
+        data[sym] = load_symbol(sym, start, end, with_oi=False)  # carry doesn't use OI
         spot[sym] = download_spot_klines(sym, start, end)
         tables[sym] = build_carry_table(data[sym], spot[sym], consts, filters)
         aligns[sym] = build_aligned(data[sym], spot[sym])
@@ -69,6 +108,9 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
     r_oos = deployed.to_numpy(dtype=float)
     ts = trial_sharpes(trial_oos)
     dsr = stats.deflated_sharpe_ratio(r_oos, ts, n_trials=spec.TRIAL_COUNT_N, conf=spec.DSR_CONF)
+    # own-search DSR (N = this strategy's grid size) for transparency: N=1000 is the conservative
+    # whole-project cumulative ledger and over-deflates a 33-config search.
+    dsr_own = stats.deflated_sharpe_ratio(r_oos, ts, n_trials=len(grid), conf=spec.DSR_CONF)
     psr0 = stats.probabilistic_sharpe_ratio(r_oos, sr_star=0.0)
 
     epoch = pd.Timestamp("1970-01-01", tz="UTC")
@@ -85,8 +127,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
 
     boot = block_bootstrap_envelope(r_oos, spec.MC_BLOCK_TRADES, spec.MC_PATHS,
                                     pctile=spec.MC_ENVELOPE_PCTILE, seed=0)
-    cm = CostModel(costs_cfg.TAKER_FEE_BPS, 2.0, costs_cfg.SLIPPAGE_BPS)
-    jitter = _run_jitter(oos_meta, data, cm, spec)
+    jitter = _run_jitter_carry(oos_meta, aligns, spec)
     beta = _beta_in_costume(deployed, data.get("BTCUSDT"))
     excision = _best_month_excision(deployed)
     pbo, pbo_n = compute_pbo(trial_oos)
@@ -117,6 +158,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
             "psr_vs_0": psr0, "dsr": dsr.dsr,
             "dsr_deflation_benchmark": dsr.sr_star_deflated, "dsr_n_trials": dsr.n_trials,
             "min_trl_obs": dsr.min_trl, "profit_factor": pf,
+            "dsr_own_search": dsr_own.dsr, "dsr_own_n": dsr_own.n_trials,
             "total_funding_pnl": float(sum(t.funding_pnl for t in oos_meta)),
             "total_basis_pnl": float(sum(t.price_pnl for t in oos_meta)),
             "total_cost": float(sum(t.cost for t in oos_meta)),
@@ -151,6 +193,7 @@ def _print_report(r):
     print("-" * 72)
     print(f"  OOS Sharpe (ann.)      {m['oos_sharpe_annualized']:+.3f}")
     print(f"  Deflated Sharpe (DSR)  {m['dsr']:.4f}  (benchmark {m['dsr_deflation_benchmark']:.4f}, N={m['dsr_n_trials']})")
+    print(f"    DSR own-search        {m['dsr_own_search']:.4f}  (N={m['dsr_own_n']}, this grid only)")
     print(f"  MinTRL (obs)           {m['min_trl_obs']:.0f}  vs OOS days {r['oos_days']}")
     print(f"  OOS profit factor      {m['profit_factor']:.3f}")
     print(f"  P&L decomp: funding={m['total_funding_pnl']:+.1f}  basis={m['total_basis_pnl']:+.1f}"

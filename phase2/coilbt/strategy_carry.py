@@ -50,12 +50,14 @@ def build_carry_table(sd: SymbolData, spot_min: pd.DataFrame, consts: ConstantsC
     with np.errstate(invalid="ignore", divide="ignore"):
         basis_bps = (pp - ps) / ps * 1e4
 
-    # daily-derived liquidity (last COMPLETED daily bar, no same-day look-ahead)
+    # daily-derived liquidity + vol (last COMPLETED daily bar, no same-day look-ahead)
     d = sd.daily
     day_ms = d["day_ms"].to_numpy(dtype="int64")
     liq_30 = d["quote_volume"].rolling(30, min_periods=30).median().to_numpy(dtype=float)
+    dvol_30 = d["close"].pct_change().rolling(30, min_periods=30).std(ddof=1).to_numpy(dtype=float)
     raw = np.searchsorted(day_ms + MS_PER_DAY, dt, side="right") - 1
     liq_at = np.where(raw >= 0, liq_30[np.clip(raw, 0, day_ms.size - 1)], np.nan)
+    dvol_at = np.where(raw >= 0, dvol_30[np.clip(raw, 0, day_ms.size - 1)], np.nan)
 
     ev = event_timestamps_ms(extra=extra_events).to_numpy(dtype="int64")
     win = int(filters.EVENT_EXCL_MINUTES * MS_PER_MIN)
@@ -69,6 +71,8 @@ def build_carry_table(sd: SymbolData, spot_min: pd.DataFrame, consts: ConstantsC
     tbl = pd.DataFrame({
         "dt_ms": dt, "f_now": f_now, "pp": pp, "ps": ps, "basis_bps": basis_bps,
         "valid_fill": valid_fill,
+        "adv_usd": liq_at,          # 30d median daily $ volume -> impact participation denominator
+        "daily_vol": dvol_at,       # 30d daily realized vol (fraction) -> impact vol term
         "ok_liq": liq_at >= filters.LIQ_FLOOR_USD,
         "ok_event": ok_event,
         "ok_mech": interval == consts.FUNDING_INTERVAL_HOURS,

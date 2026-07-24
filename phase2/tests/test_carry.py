@@ -72,11 +72,12 @@ def test_four_leg_cost_charged():
     tbl = build_carry_table(sd, spot, ConstantsCarry(), FiltersCarry())
     aligned = build_aligned(sd, spot)
     v = VariantCarry(ParamsCarry(ENTRY_FUND_BPS=1.0, EXIT_FUND_BPS=0.0))
-    trades, _ = run_symbol_carry(sd, spot, v, ConstantsCarry(), FiltersCarry(), CostsCarry(),
-                                 10_000.0, tbl, aligned)
+    # STRESS_MULT=1 and flat prices (daily_vol=0 -> impact falls back to flat leg) isolates
+    # the 4-leg structure: cost == (fee+slip) * (4 legs' notional).
+    trades, _ = run_symbol_carry(sd, spot, v, ConstantsCarry(), FiltersCarry(),
+                                 CostsCarry(STRESS_MULT=1.0), 10_000.0, tbl, aligned)
     leg = (5.0 + 2.0) * 1e-4
     for t in trades:
-        # 4 legs each ~ qty*price; with flat prices all four notionals ~ equal
         assert t.cost > 3.5 * leg * t.notional   # ~4 legs, allowing basis/price drift
         assert t.cost < 4.5 * leg * t.notional
 

@@ -23,6 +23,7 @@ from .backtest import Trade
 from .config_carry import ConstantsCarry, CostsCarry, VariantCarry
 from .costs import BPS, FundingModel
 from .data.loader import SymbolData
+from .quantlib.impact_costs import ImpactCostModel
 
 MS_PER_DAY = 86_400_000
 
@@ -92,13 +93,19 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
     f_now = tbl["f_now"].to_numpy(dtype=float)
     pp_t = tbl["pp"].to_numpy(dtype=float)
     ps_t = tbl["ps"].to_numpy(dtype=float)
+    adv_t = tbl["adv_usd"].to_numpy(dtype=float)
+    dvol_t = tbl["daily_vol"].to_numpy(dtype=float)
 
     if aligned is None:
         aligned = build_aligned(sd, spot_min)
     mt, ppo, ppc, pso, psc, daily_basis = aligned
 
     fund = FundingModel(sd.funding)
-    leg = (costs_cfg.TAKER_FEE_BPS + costs_cfg.SLIPPAGE_BPS) * BPS   # per-leg fractional cost
+    # ported √-impact cost model; per-leg fractional cost = round_trip/2 at the leg's participation
+    impact = ImpactCostModel(commission_bps=costs_cfg.TAKER_FEE_BPS,
+                             half_spread_bps=costs_cfg.SLIPPAGE_BPS,
+                             impact_coef=costs_cfg.IMPACT_COEF, stress_mult=costs_cfg.STRESS_MULT)
+    flat_leg = (costs_cfg.TAKER_FEE_BPS + costs_cfg.SLIPPAGE_BPS) * costs_cfg.STRESS_MULT * BPS
     exit_fund = p.EXIT_FUND_BPS * BPS
     basis_stop = p.BASIS_STOP_BPS * BPS
     max_hold_ms = consts.MAX_HOLD_DAYS * MS_PER_DAY
@@ -167,7 +174,14 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
         funding_pnl = fund.funding_pnl_frac(-1, entry_ms, exit_ms) * perp_notional  # short receives
         en_p, en_s = qty * pp_e, qty * ps_e
         ex_p, ex_s = qty * pp_x, qty * ps_x
-        cost = leg * (en_p + en_s + ex_p + ex_s)                     # 4 taker legs
+        # per-leg cost via the √-impact model, at this entry's participation & vol (fallback flat)
+        adv, dvol = adv_t[k], dvol_t[k]
+        if np.isfinite(adv) and adv > 0 and np.isfinite(dvol) and dvol > 0:
+            part = perp_notional / adv
+            leg_cost_frac = impact.round_trip_bps(part, dvol) / 2.0 * BPS   # one leg
+        else:
+            leg_cost_frac = flat_leg
+        cost = leg_cost_frac * (en_p + en_s + ex_p + ex_s)          # 4 taker legs
         net = price_pnl + funding_pnl - cost
 
         entry_day = pd.Timestamp((entry_ms // MS_PER_DAY) * MS_PER_DAY, unit="ms", tz="UTC")
@@ -178,7 +192,7 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
             qty=qty, notional=perp_notional, price_pnl=price_pnl, funding_pnl=funding_pnl,
             cost=cost, net_pnl=net, reason=reason))
         _mark_daily_carry(daily_pnl, daily_basis, qty, basis_entry, basis_exit,
-                          entry_day, exit_day, en_p, en_s, ex_p, ex_s, leg,
+                          entry_day, exit_day, en_p, en_s, ex_p, ex_s, leg_cost_frac,
                           fund, entry_ms, exit_ms, perp_notional)
 
         exit_k = int(np.searchsorted(dt, exit_ms, side="right"))

@@ -40,9 +40,15 @@ class FiltersCarry:
 
 @dataclass(frozen=True)
 class CostsCarry:
-    # 4 taker legs per round trip (short perp + buy spot in; buy perp + sell spot out)
+    # 4 taker legs per round trip (short perp + buy spot in; buy perp + sell spot out).
+    # Cost model = ported ImpactCostModel: fee + half-spread + impact_coef*vol_bps*sqrt(part),
+    # all x STRESS_MULT. At retail size (participation ~5e-6 on a $1B-ADV symbol) the impact
+    # term is ~0.2 bps, so the binding stress is the multiplier on fee+spread. The pass/fail
+    # run uses STRESS_MULT=2.0 (the ~2x-cost regime the carry survived in sensitivity testing).
     TAKER_FEE_BPS: float = 5.0
-    SLIPPAGE_BPS: float = 2.0
+    SLIPPAGE_BPS: float = 2.0        # treated as the half-spread in the impact model
+    IMPACT_COEF: float = 0.5
+    STRESS_MULT: float = 2.0         # stressed pass/fail cost; set 1.0 for the base (unstressed) view
 
 
 @dataclass(frozen=True)

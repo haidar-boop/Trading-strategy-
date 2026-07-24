@@ -80,10 +80,12 @@ def _align_oi_daily(metrics: pd.DataFrame, daily: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def load_symbol(symbol: str, start: date, end: date) -> SymbolData:
+def load_symbol(symbol: str, start: date, end: date, with_oi: bool = True) -> SymbolData:
     klines = download.download_klines(symbol, start, end)
     funding = download.download_funding(symbol, start, end)
-    metrics = download.download_metrics(symbol, start, end)
+    # OI (metrics) is only needed by strategies that use the OI filter (Coil OI-variant, FEF).
+    # The cash-and-carry does not use OI, so with_oi=False skips the slow daily-metrics download.
+    metrics = download.download_metrics(symbol, start, end) if with_oi else None
     if len(klines) == 0:
         raise RuntimeError(f"No klines for {symbol} in [{start}, {end}]")
     daily = _aggregate_daily(klines)
