@@ -113,3 +113,55 @@ keep as drawdown reducers; treat ATM VRP as the single real shot at an independe
 funded small and only if its pilot passes with independence coming from the *body*, not the wings.
 Deploy nothing on the strength of a backtest — deploy on the strength of the pre-registered tests
 surviving.
+
+---
+
+# Falsification results (running the pre-registered tests, cheapest-first)
+
+## Test 1 — Stablecoin de-risk overlay: ❌ FALSIFIED (redundant with the funding threshold)
+
+Pre-registered: does gating carry OFF on stablecoin-stress reduce drawdown on LUNA/FTX/SVB without
+cutting return? Checked the most fundamental thing first — **does the carry even hold positions during
+those windows?**
+
+- **LUNA (May 2022): 0 open carry positions. FTX (Nov 2022): 0. SVB/USDC (Mar 2023): 2**, and those
+  two *entered 2023-03-15 — four days AFTER the USDC depeg low (~0.88 on Mar 11)*, in the funding-spike
+  recovery, and were small net losers anyway (−$25 each).
+- During the acute SVB window (03-08→03-14) BTC/ETH funding averaged ~0.5 bps and dipped **negative**
+  (−0.89) — far below the 1.5 bps entry bar. The carry was correctly flat.
+
+**Why (elegant):** the mechanism that would make a stablecoin gate useful (stress → danger) is the
+*same* mechanism that already turns the carry off (stress → longs delever → funding collapses below
+the entry bar → no position). The two signals are collinear by construction. A stablecoin gate
+protects positions the carry never holds. **Drop the sleeve.** (`squeeze_gate.py`-style position-
+overlap check; no new data pipeline needed to reach the verdict.)
+
+## Test 2 — Funding-flip hazard overlay: ❌ FALSIFIED (no flip population to learn from)
+
+Pre-registered: does a state-conditioned hazard model (OI z, OI accel, realized vol, funding slope)
+beat the naive fixed-duration baseline at timing the regime flip? `funding_hazard.py`, leak-free.
+
+Measured remaining-duration until an elevated regime (funding ≥ 1.5 bps) flips below the exit bar
+(0.5 bps), in 8h settlements (3/day; the carry's time-cap is 42):
+
+| symbol | in-regime settlements | median duration | mean | ends ≤1 | ends ≤3 | ends ≤6 |
+|---|---|---|---|---|---|---|
+| BTC | 649 | **118 (~40 days)** | 154 | 0.002 | 0.005 | 0.011 |
+| ETH | 721 | **129 (~43 days)** | 162 | 0.001 | 0.003 | 0.006 |
+| SOL | 714 | 68 (~23 days) | 97 | 0.003 | 0.013 | 0.035 |
+
+**Once funding is elevated it stays elevated for weeks; a near-term flip happens 0.1–1% of the time.**
+There is essentially **no positive-event population** for a hazard model to fit or validate — the
+flips live in the rare out-of-sample cascades. "Hold to the fixed time-cap" is empirically optimal;
+the crowdedness features have nothing to discriminate. Same root cause as the level study
+(persistence dominates) and Test 1 (the carry is already flat for the cascades). Leakage pinned:
+noise features do not beat the baseline OOS. **Drop the sleeve.**
+
+## Interim status
+
+Both overlays falsified — for the *same underlying reason*, which is itself the redesign's core
+thesis confirmed empirically: **funding persistence is so strong that the "regime flip / stress" the
+overlays target is a rare tail the calm sample does not contain, and the carry's own funding
+threshold already keeps it flat during those events.** The overlays would protect against a danger
+the strategy is structurally already avoiding. Next: **Test 3 — ATM variance-risk premium**, the one
+candidate with a genuinely orthogonal factor (requires Deribit DVOL + free HF spot for realized vol).
