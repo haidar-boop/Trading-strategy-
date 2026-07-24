@@ -1,0 +1,101 @@
+{
+  "strategy": "Delta-neutral cash-and-carry",
+  "window": {
+    "start": "2020-01-01",
+    "end": "2025-12-31",
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT"
+    ]
+  },
+  "n_variants": 33,
+  "n_folds": 8,
+  "oos_days": 1461,
+  "oos_trades": 18,
+  "exit_reasons": {
+    "funding_decay": 0,
+    "basis_stop": 0,
+    "time_cap": 18
+  },
+  "selected_per_fold": [
+    [
+      "2022-01-01",
+      "EF3_XF0_BS200"
+    ],
+    [
+      "2022-07-01",
+      "EF3_XF0_BS200"
+    ],
+    [
+      "2023-01-01",
+      "EF3_XF0_BS200"
+    ],
+    [
+      "2023-07-01",
+      "EF3_XF0_BS100"
+    ],
+    [
+      "2024-01-01",
+      "EF3_XF0_BS100"
+    ],
+    [
+      "2024-07-01",
+      "EF1.5_XF0_BS100"
+    ],
+    [
+      "2025-01-01",
+      "EF1.5_XF0_BS100"
+    ],
+    [
+      "2025-07-01",
+      "EF1.5_XF0_BS100"
+    ]
+  ],
+  "metrics": {
+    "oos_sharpe_annualized": 3.2014693613524847,
+    "psr_vs_0": 0.9999999999999987,
+    "dsr": 7.445451666098383e-05,
+    "dsr_deflation_benchmark": 0.24794799819613486,
+    "dsr_n_trials": 1000,
+    "min_trl_obs": Infinity,
+    "profit_factor": Infinity,
+    "total_funding_pnl": 825.18485,
+    "total_basis_pnl": 42.97231840981525,
+    "total_cost": 258.14229360970864,
+    "total_net_pnl": 610.0148748001067,
+    "ex_best_month": 0.03576497774186605,
+    "best_month_total": 0.06100148748001066,
+    "mc_real_terminal": 1.062851002570244,
+    "mc_p5_terminal": 1.0372588747528748,
+    "jitter_base_terminal": -3756.355842557098,
+    "jitter_median_terminal": -3768.7807666436074,
+    "beta_corr_to_btc": -0.014421569112483698,
+    "pbo": 0.06351981351981352,
+    "pbo_n_configs": 33,
+    "rich": {
+      "CAGR": 0.015344841702136902,
+      "AnnVol": 0.004760293427548953,
+      "Sharpe": 3.2014693613524847,
+      "Sortino": 1.5704758952389082,
+      "Calmar": 6.733817423845693,
+      "MaxDD": -0.002278773054909089,
+      "Ulcer": 0.05934508653085169,
+      "VaR95": -0.0,
+      "CVaR95": 1.1458551300315687e-05,
+      "TailRatio": NaN,
+      "Omega": 4.984779124453027
+    }
+  },
+  "checks": {
+    "dsr_pass": false,
+    "pf_pass": true,
+    "trades_pass": false,
+    "mintrl_pass": false,
+    "single_episode_pass": true,
+    "pbo_pass": true,
+    "mc_envelope_pass": false,
+    "mc_jitter_pass": false
+  },
+  "verdict": "INSUFFICIENT EVIDENCE \u2014 do not deploy (OOS trades 18 < floor 30); statistical checks are moot below the floor.",
+  "runtime_sec": 44.2
+}

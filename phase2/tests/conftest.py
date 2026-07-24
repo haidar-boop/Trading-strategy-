@@ -29,7 +29,7 @@ def make_symbol_data(closes: list[float], symbol: str = "TESTUSDT",
     daily = pd.DataFrame({
         "open": opens, "high": highs, "low": lows, "close": closes,
         "volume": np.full(n, 1000.0),
-        "quote_volume": np.full(n, 5_000_000.0),      # >> liquidity floor
+        "quote_volume": np.full(n, 2_000_000_000.0),  # BTC/ETH-scale daily $ vol (> $1B floor)
         "med_1m_dollar_vol": np.full(n, 2_000_000.0),
         "n_minutes": np.full(n, 1440),
         "day_ms": day_ms,

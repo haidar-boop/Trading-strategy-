@@ -31,6 +31,7 @@ import pandas as pd
 import requests
 
 BASE = "https://data.binance.vision/data/futures/um"
+SPOT_BASE = "https://data.binance.vision/data/spot"
 DEFAULT_RAW = Path(__file__).resolve().parents[2] / "artifacts" / "raw"
 
 _SYMBOL_RE = re.compile(r"[A-Z0-9]{1,20}")
@@ -139,6 +140,40 @@ def download_klines(symbol: str, start: date, end: date,
         frames.append(df)
     if not frames:
         return pd.DataFrame(columns=["open_time", "open", "high", "low", "close", "volume", "quote_volume"])
+    out = pd.concat(frames, ignore_index=True).drop_duplicates("open_time").sort_values("open_time")
+    return out.reset_index(drop=True)
+
+
+# ----- spot klines ----------------------------------------------------------
+def download_spot_klines(symbol: str, start: date, end: date,
+                         raw_dir: Path = DEFAULT_RAW) -> pd.DataFrame:
+    """Monthly 1m SPOT klines (data.binance.vision spot/). Same 12-col schema as futures;
+    header may be absent in older files (handled by _read_zip_csv). Used for the delta
+    hedge leg in the cash-and-carry backtest."""
+    symbol = _validate_symbol(symbol)
+    out_dir = raw_dir / "spot_klines" / symbol
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for y, m in _month_range(start, end):
+        cache = out_dir / f"{symbol}-spot-1m-{y:04d}-{m:02d}.parquet"
+        if cache.exists():
+            frames.append(pd.read_parquet(cache))
+            continue
+        url = f"{SPOT_BASE}/monthly/klines/{symbol}/1m/{symbol}-1m-{y:04d}-{m:02d}.zip"
+        content = _get(url)
+        if content is None:
+            continue
+        df = _read_zip_csv(content)
+        df.columns = _KLINE_COLS[: df.shape[1]]
+        df = df[["open_time", "open", "high", "low", "close"]].copy()
+        for c in ["open", "high", "low", "close"]:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        df["open_time"] = pd.to_numeric(df["open_time"], errors="coerce").astype("int64")
+        df = df.dropna(subset=["open", "high", "low", "close"])
+        df.to_parquet(cache, index=False)
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame(columns=["open_time", "open", "high", "low", "close"])
     out = pd.concat(frames, ignore_index=True).drop_duplicates("open_time").sort_values("open_time")
     return out.reset_index(drop=True)
 
