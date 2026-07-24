@@ -1,5 +1,31 @@
 # Review-Driven Improvements — findings log
 
+## Scorecard — all 20 review points
+
+| # | Item | Status |
+|---|---|---|
+| 18 | Economic decomposition | ✅ done — funding ~100% of edge, basis ≈0, cost ~50% drag |
+| 19 | Generalization (per-year, per-symbol) | ✅ done — **key finding: regime-dependent & decaying** (0 trades 2022 & 2025) |
+| 6 | Tail-stress scenarios | ✅ done — full cascade −23%; cross-margin is the critical control |
+| 5 | Exchange/liquidation model | ✅ done (within #6) — isolated-margin liquidation is the dominant tail |
+| 9 | Capacity analysis | ✅ done — retail fine; ~$500M impact ceiling; opportunity-count is the real limit |
+| 14 | Adversarial data sims | ✅ done — accounting invariant holds under corrupt/missing/delayed/NaN data |
+| 16 | Literature review | ✅ done — `LITERATURE.md`, real cites (incl. Crypto-Carry paper confirming #19 decay) |
+| 1,7,15 | Data-gated (L2, cross-exchange, options/on-chain) | ✅ roadmap done — `DATA_ROADMAP.md` (do: CVD free, cross-venue funding free, Deribit skew) |
+| 3,10,20 | Funding **prediction**/persistence + "why is funding high" | ⏳ next major build (the headline conceptual upgrade) |
+| 2 | Regime classifier | ⏳ pending (HMM already ported) |
+| 13 | Better exit logic (forecast/OI/vol) | ⏳ pending (depends on #3) |
+| 4 | Spot-leg execution realism | ⏳ pending |
+| 8,11 | Dynamic sizing / portfolio optimization | ⏳ pending |
+| 17 | Confidence intervals / param stability | ⏳ pending (quick) |
+| 12 | Stablecoin / depeg risk | ⏳ pending (discussion + scenario) |
+
+Done this pass: **7 of the substantive items + the data roadmap**, all committed with real measured
+results. The biggest single remaining upgrade is **#3/#10/#20 (predict funding instead of react)** —
+a proper model build that deserves its own focused effort.
+
+
+
 Working through the 20-point review. Buildable-now items first (by impact × feasibility);
 data-gated items (#1 order-book, #7 cross-exchange, #15 options/L2/on-chain) flagged separately.
 
