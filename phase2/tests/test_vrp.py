@@ -59,3 +59,19 @@ def test_monthly_vrp_cost_subtraction():
     # gross 10 vol points, cost 2.5 -> net 7.5 each month
     assert np.allclose(g["gross"], 10.0)
     assert np.allclose(g["net"], 7.5)
+
+
+def test_score_series_positive_stream():
+    from phase2.coilbt.vrp_book import score_series
+    import numpy as np
+    rng = np.random.default_rng(0)
+    net = rng.normal(6.0, 8.0, 46)          # clearly-positive monthly vol-point stream
+    sc = score_series(net)
+    assert sc["sharpe_ann"] > 0 and sc["psr0"] > 0.9
+    assert sc["maxdd_volpts"] <= 0 and sc["cvar5_m"] < sc["mean_m"]
+
+
+def test_score_series_needs_min_length():
+    from phase2.coilbt.vrp_book import score_series
+    import numpy as np
+    assert score_series(np.array([1.0, 2.0, 3.0])) is None
