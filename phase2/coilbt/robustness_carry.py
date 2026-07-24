@@ -233,7 +233,7 @@ def run(symbols, start, end, conf=0.90):
     print(f"  block ladder (mean-block -> {pct}% SR CI):")
     for L, (lo, hi) in ci["ladder"].items():
         print(f"      L={L}: [{lo:>6.3f}, {hi:>6.3f}]   eff. sample n/L = {ci['n_trades']/L:.0f}")
-    if ci['iid_se']:
+    if ci['iid_se'] and np.isfinite(ci['iid_se']) and np.isfinite(ci['boot_se']):
         ratio = ci['boot_se'] / ci['iid_se']
         tag = ("bets near-independent (no autocorr inflation)" if ratio <= 1.05
                else "autocorrelation inflates risk")

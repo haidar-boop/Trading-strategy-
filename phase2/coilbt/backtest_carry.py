@@ -197,9 +197,10 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
         else:
             # #38 asymmetric: spot leg (10bps fee, spot ADV) costs ~2x the perp leg (5bps, perp ADV)
             vol_bps = (dvol * 1e4) if have_impact else 0.0
-            perp_imp = costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(perp_notional / adv) if have_impact else 0.0
+            perp_imp = costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(en_p / adv) if have_impact else 0.0
             spot_adv = adv * spot_adv_ratio
-            spot_imp = (costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(perp_notional / spot_adv)
+            # spot participation uses the SPOT notional (en_s) over spot ADV, not perp notional
+            spot_imp = (costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(en_s / spot_adv)
                         if have_impact and spot_adv > 0 else 0.0)
             perp_leg = (costs_cfg.TAKER_FEE_BPS + costs_cfg.SLIPPAGE_BPS + perp_imp) * smult * BPS
             spot_leg = (spot_fee + spot_spread + spot_imp) * smult * BPS
