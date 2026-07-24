@@ -69,6 +69,8 @@
     "profit_factor": 21.772766129063932,
     "dsr_own_search": 1.7069793204701673e-09,
     "dsr_own_n": 33,
+    "dsr_effective_N": 0.19853881985128286,
+    "effective_n": 3.9691847747648903,
     "total_funding_pnl": 1676.73205,
     "total_basis_pnl": 107.66127792909855,
     "total_cost": 1052.6982156757038,
@@ -103,9 +105,11 @@
       "n_conservative": 1000,
       "dsr_own_N": 0.007242789072592394,
       "n_own": 33,
-      "deflation_benchmark": 1.3373241273701377,
-      "min_trl_trades": Infinity,
-      "passes_own": false
+      "dsr_effective_N": 0.9621845387828866,
+      "n_eff": 4,
+      "deflation_benchmark": 0.6660804858806861,
+      "min_trl_trades": 30.143704302409873,
+      "passes_eff": true
     }
   },
   "checks": {
@@ -117,8 +121,8 @@
     "pbo_pass": true,
     "mc_envelope_pass": false,
     "mc_jitter_pass": true,
-    "per_trade_dsr_pass": false
+    "per_trade_dsr_pass": true
   },
-  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, mintrl_pass, mc_envelope_pass, per_trade_dsr_pass",
-  "runtime_sec": 226.0
+  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, mintrl_pass, mc_envelope_pass",
+  "runtime_sec": 103.4
 }

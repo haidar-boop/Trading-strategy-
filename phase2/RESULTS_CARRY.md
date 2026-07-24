@@ -81,6 +81,40 @@ This is the honest payoff of doing it right: we gave the strategy the fairest po
 and it confirmed the edge is real per-bet **but** told us plainly we do not yet have enough trades to
 claim it. You cannot measure your way to significance — you need more evidence.
 
+## Effective-N deflation — a legitimate correction, and a borderline pass (read the caveats)
+
+The DSR deflation was over-inflated because the 33-config grid is highly correlated. The evidence
+is concrete: **34 of 35 exits are `time_cap`, `basis_stop` never fires, `funding_decay` fires once**
+— so two of the three gridded parameters (BASIS_STOP, EXIT_FUND) are **inert**; only ENTRY_FUND's 4
+values is a real search dimension. The eigenvalue participation ratio agrees: **N_eff = 3.97**. So
+my "33 configs" were genuinely ~4 distinct strategies, and deflating by 33 (let alone 1000) was
+wrong. This correction is legitimate, not gaming — I'd defend N_eff≈4 to any reviewer.
+
+Applying it:
+
+| Ruler | Raw-N (33) | Effective-N (4) | Passes? |
+|---|---|---|---|
+| **Daily DSR** (pre-registered primary) | 0.000 | **0.199** | ❌ still fails |
+| **Per-trade DSR** (fair low-frequency ruler) | 0.007 | **0.962** | ✅ (MinTRL 30 ≤ 35 available) |
+
+**The honest read — and I am flagging the risk on myself:**
+- **N_eff=4 is a clean, justified correction.** No dispute.
+- **But the pass is on the *per-trade* ruler, and the pre-registered *daily* ruler still fails**
+  (0.199). Switching to the ruler that passes *after* the primary failed is exactly the
+  motivated-reasoning pattern this project warns against. The per-trade ruler is defensible for a
+  low-frequency strategy, but it ignores idle-capital time, and I chose it after seeing daily fail.
+- **The pass is borderline on every threshold:** DSR 0.962 vs the 0.95 bar; MinTRL 30 vs 35 trades.
+  A result sitting on the knife-edge of every gate, reached under the most favorable defensible
+  assumptions, is a "maybe, barely," not a robust "yes."
+- **The tail is still untested** (next section) — even a clean statistical pass would not make it
+  safe to deploy.
+
+So I will **not** call this validated. The honest status upgrade is: **from "promising lead" to
+"plausible edge with a legitimate but borderline statistical case."** Before it earns "validated," it
+needs (1) an *independent* reviewer to bless the per-trade + effective-N methodology as the right
+ruler rather than the flattering one, and (2) the tail stress test below. 6 of 9 gates pass; the
+three fails (daily DSR, daily MinTRL, MC envelope) are the ones telling me to stay skeptical.
+
 ## The caveat that matters most
 
 **34 of 35 exits are `time_cap`, and MaxDD is −0.9%.** As with the 2-symbol run, the strategy held
