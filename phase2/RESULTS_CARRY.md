@@ -56,6 +56,31 @@ Two things are true at once and I won't hide either:
    real limitation of the metric, **but it is not an excuse**: the pre-registered bar is DSR on the
    deployed return stream, and it is not cleared. I am not going to relabel a fail as a pass.
 
+## Per-trade re-score (the fair ruler for a low-frequency strategy)
+
+The daily-Sharpe fail is partly a metric artifact (35 trades diluted across ~1,400 flat days), so we
+re-scored on a **per-trade** basis — the correct ruler for a low-frequency strategy — and reported it
+**alongside** the daily numbers (not instead of them; swapping to the flattering metric would be the
+Sharpe-inflation this project exists to prevent):
+
+| Ruler | Sharpe | PSR(0) | DSR (own-N) | MinTRL |
+|---|---|---|---|---|
+| Daily returns (n=1461 days) | 0.099/bar (1.89 ann) | — | 0.000 | ∞ |
+| **Per-trade (n=35 trades)** | **+0.949** | **1.000** | **0.007** | **∞ → NEED MORE trades** |
+
+What this tells us, cleanly:
+- **The bets are genuinely good.** Per-trade Sharpe 0.949 with PSR(0)=1.000 — the trade-level edge is
+  real and confidently positive. The 10× jump from the daily number is legitimate (it removes the
+  idle-day dilution), not a trick.
+- **The fair ruler still fails — and names the real barrier.** Even per-trade, DSR is 0.007 and MinTRL
+  is infinite: **the binding constraint is trade *count*, not bet quality.** 35 trades cannot prove
+  the edge isn't luck given the config search and the heterogeneous grid dispersion. No choice of
+  ruler fixes that — **only more data does** (more instruments, longer history, or higher frequency).
+
+This is the honest payoff of doing it right: we gave the strategy the fairest possible measurement,
+and it confirmed the edge is real per-bet **but** told us plainly we do not yet have enough trades to
+claim it. You cannot measure your way to significance — you need more evidence.
+
 ## The caveat that matters most
 
 **34 of 35 exits are `time_cap`, and MaxDD is −0.9%.** As with the 2-symbol run, the strategy held

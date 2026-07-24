@@ -29,6 +29,51 @@ from .run_phase2 import (REF_EQUITY, ARTIFACTS, _beta_in_costume, _portfolio_dai
 from .run_fef import _best_month_excision
 
 
+def _per_trade_dsr(oos_meta, variant_trades, oos_windows, n_conservative):
+    """Per-TRADE risk-adjusted evaluation — the fair ruler for a low-frequency strategy.
+
+    Daily-return Sharpe dilutes a 35-trade strategy across ~1400 flat days (understating it);
+    per-trade Sharpe scores the bets themselves (n = number of trades). We report BOTH — this is
+    NOT a swap to the flattering metric. Caveat, stated in the report: per-trade Sharpe ignores
+    idle-capital time between trades, so it measures 'are the bets good?' not 'is this a good use
+    of capital over time?'. MinTRL here is in TRADES (how many bets you'd need), and with only ~35
+    trades that itself may be the binding constraint.
+    """
+    if len(oos_meta) < 3:
+        return None
+    dep = np.array([t.net_pnl / t.notional for t in oos_meta if t.notional > 0], dtype=float)
+    if dep.size < 3:
+        return None
+    epoch = pd.Timestamp("1970-01-01", tz="UTC")
+    wins = [((s - epoch) // pd.Timedelta(milliseconds=1), (e - epoch) // pd.Timedelta(milliseconds=1))
+            for s, e in oos_windows]
+
+    def in_oos(ms):
+        return any(s <= ms < e for s, e in wins)
+
+    trial_sh = []
+    for lab, trs in variant_trades.items():
+        rr = np.array([t.net_pnl / t.notional for t in trs if t.notional > 0 and in_oos(t.entry_ms)],
+                      dtype=float)
+        if rr.size >= 3:
+            trial_sh.append(stats.sharpe_ratio(rr))
+    trial_sh = np.asarray(trial_sh, dtype=float)
+    sr = stats.sharpe_ratio(dep)
+    dsr_cons = stats.deflated_sharpe_ratio(dep, trial_sh, n_trials=n_conservative)
+    dsr_own = stats.deflated_sharpe_ratio(dep, trial_sh, n_trials=max(2, trial_sh.size))
+    mtrl = stats.min_track_record_length(dep, sr_star=dsr_own.sr_star_deflated)
+    return {
+        "n_trades": int(dep.size),
+        "per_trade_sharpe": float(sr),
+        "psr_vs_0": float(stats.probabilistic_sharpe_ratio(dep, sr_star=0.0)),
+        "dsr_conservative_N": float(dsr_cons.dsr), "n_conservative": int(n_conservative),
+        "dsr_own_N": float(dsr_own.dsr), "n_own": int(max(2, trial_sh.size)),
+        "deflation_benchmark": float(dsr_own.sr_star_deflated),
+        "min_trl_trades": float(mtrl),
+        "passes_own": bool(dsr_own.dsr >= 0.95 and dep.size >= mtrl),
+    }
+
+
 def _run_jitter_carry(oos_meta, aligns, spec):
     """Two-leg entry-timing jitter for the delta-neutral carry. Shift each trade's entry by
     +/- MC_JITTER_MINUTES bars (keeping the hold length), RE-DERIVE both legs' fills from the
@@ -132,6 +177,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
     excision = _best_month_excision(deployed)
     pbo, pbo_n = compute_pbo(trial_oos)
     rmets = rich_metrics(r_oos)
+    ptd = _per_trade_dsr(oos_meta, variant_trades, oos_windows, spec.TRIAL_COUNT_N)
 
     checks = {
         "dsr_pass": bool(dsr.dsr >= spec.DSR_CONF),
@@ -142,6 +188,8 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
         "pbo_pass": bool(np.isfinite(pbo) and pbo < 0.5),
         "mc_envelope_pass": bool(boot.passed),
         "mc_jitter_pass": bool(jitter["passed"]) if jitter else False,
+        # informational secondary read (NOT the pass/fail verdict, which stays on the daily DSR):
+        "per_trade_dsr_pass": bool(ptd["passes_own"]) if ptd else False,
     }
     verdict = _verdict(checks, oos_pnls.size, spec.OOS_MIN_TRADES)
 
@@ -168,6 +216,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
             "jitter_base_terminal": jitter["base_terminal"] if jitter else None,
             "jitter_median_terminal": jitter["jitter_median"] if jitter else None,
             "beta_corr_to_btc": beta["corr"], "pbo": pbo, "pbo_n_configs": pbo_n, "rich": rmets,
+            "per_trade": ptd,
         },
         "checks": checks, "verdict": verdict, "runtime_sec": round(time.time() - t0, 1),
     }
@@ -194,6 +243,14 @@ def _print_report(r):
     print(f"  OOS Sharpe (ann.)      {m['oos_sharpe_annualized']:+.3f}")
     print(f"  Deflated Sharpe (DSR)  {m['dsr']:.4f}  (benchmark {m['dsr_deflation_benchmark']:.4f}, N={m['dsr_n_trials']})")
     print(f"    DSR own-search        {m['dsr_own_search']:.4f}  (N={m['dsr_own_n']}, this grid only)")
+    pt = m.get("per_trade")
+    if pt:
+        print(f"  --- PER-TRADE ruler (fair for low frequency; n={pt['n_trades']} trades) ---")
+        print(f"  per-trade Sharpe       {pt['per_trade_sharpe']:+.3f}  PSR(0)={pt['psr_vs_0']:.3f}")
+        print(f"  per-trade DSR          own-N {pt['dsr_own_N']:.3f} (N={pt['n_own']}) | "
+              f"conservative {pt['dsr_conservative_N']:.3f} (N={pt['n_conservative']})")
+        print(f"  per-trade MinTRL       {pt['min_trl_trades']:.0f} trades vs {pt['n_trades']} available"
+              f"  -> {'ENOUGH' if pt['n_trades'] >= pt['min_trl_trades'] else 'NEED MORE'}")
     print(f"  MinTRL (obs)           {m['min_trl_obs']:.0f}  vs OOS days {r['oos_days']}")
     print(f"  OOS profit factor      {m['profit_factor']:.3f}")
     print(f"  P&L decomp: funding={m['total_funding_pnl']:+.1f}  basis={m['total_basis_pnl']:+.1f}"

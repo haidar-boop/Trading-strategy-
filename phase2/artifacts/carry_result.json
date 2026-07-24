@@ -94,6 +94,18 @@
       "CVaR95": 4.211513477606708e-05,
       "TailRatio": NaN,
       "Omega": 2.297511996955549
+    },
+    "per_trade": {
+      "n_trades": 35,
+      "per_trade_sharpe": 0.9485661450144568,
+      "psr_vs_0": 0.9999999987824872,
+      "dsr_conservative_N": 1.3276950450884251e-12,
+      "n_conservative": 1000,
+      "dsr_own_N": 0.007242789072592394,
+      "n_own": 33,
+      "deflation_benchmark": 1.3373241273701377,
+      "min_trl_trades": Infinity,
+      "passes_own": false
     }
   },
   "checks": {
@@ -104,8 +116,9 @@
     "single_episode_pass": true,
     "pbo_pass": true,
     "mc_envelope_pass": false,
-    "mc_jitter_pass": true
+    "mc_jitter_pass": true,
+    "per_trade_dsr_pass": false
   },
-  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, mintrl_pass, mc_envelope_pass",
-  "runtime_sec": 97.2
+  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, mintrl_pass, mc_envelope_pass, per_trade_dsr_pass",
+  "runtime_sec": 226.0
 }
