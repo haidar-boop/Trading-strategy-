@@ -229,3 +229,57 @@ It is NOT a finished strategy: it is an index-proxy pilot with genuine negative-
 must be validated on real Deribit option quotes and sized as a small satellite. But it is the first
 new edge in this project with an economic reason to exist AND empirical support AND independence from
 the carry — which is precisely what "increase the economic edge, not the backtest" asked for.
+
+---
+
+# ⚠️ CORRECTION — adversarial review found my VRP scoring was inflated
+
+I ran a 3-angle adversarial panel (replication validity / sample-regime / hidden-risk) against the
+BTC VRP result. It found **two real methodology flaws in my own code**, and correcting them
+materially lowers the verdict. I was wrong to claim the VRP "clears DSR"; it does not.
+
+**Flaw 1 — non-tradeable smoothing.** `monthly_vrp` averaged ~30 *overlapping* daily forward-vol
+windows per calendar month. You sell **one** straddle a month, not the average of 30 overlapping
+30-day-forward windows — that averaging is a variance-reduction smoother that inflates Sharpe. The
+reported 2.14 sat near the *top* of the single-roll offset range.
+
+**Flaw 2 — linear IV−RV accounting.** A short variance swap pays `(IV²−RV²)/(2·IV)`, not linear
+`IV−RV`. Linear overstates the mean ~20% and, worse, **hides the negative convexity**: a real vol
+explosion is quadratic in RV.
+
+**Corrected results (tradeable single-roll averaged over offsets, variance-space):**
+
+| ccy | gross | net (bleed 2) | Sharpe | 90% CI | **DSR** | maxDD | tail: real crash month | Sharpe with tail |
+|---|---|---|---|---|---|---|---|---|
+| BTC | 8.1 | 4.9 | **1.09** | [0.34, 2.08] | **0.92 ✗** | −44 | **−298 volpts** (RV 212%) | **−0.09** |
+| ETH | 4.0 | 0.5 | 0.07 | [−0.56, 1.16] | 0.53 ✗ | −145 | −360 volpts | −0.42 |
+
+- **BTC VRP Sharpe is ~0.9–1.1, DSR ~0.88–0.92 — it does NOT clear the 0.95 bar** (I previously and
+  wrongly said it did; that rested on the smoother + linear accounting).
+- **The tail is savage in variance space.** A real COVID-scale vol month is **−298 vol points** — a
+  *single* such month exceeds the entire 46-month accumulated premium (~225) and turns the Sharpe
+  **negative**. My earlier −60 injection was less than half the honest size.
+- The premium itself is **real and structural** (gross ~8 volpts BTC, positive every year 2021–24,
+  compressing 16.6→8.4), but that is exactly what a **compensated crash-risk premium** looks like:
+  positive expected value, paid for bearing a tail the sample never drew.
+
+**Corrected verdict: `real_but_smaller`.** The BTC ATM VRP is a genuine, economically-grounded,
+carry-independent premium — but it is **positive-EV short-convexity insurance, NOT leverable
+Sharpe-grade alpha.** It does not clear the deflated-Sharpe bar once traded and accounted honestly,
+and its defining risk is an out-of-sample tail. Correct disposition: at most a **small, hard-stopped,
+un-levered** short-convexity sleeve — never sized against its in-sample Sharpe.
+
+## Final honest state of the redesign
+
+Of seven candidate edges: four rejected on economics, two overlays falsified empirically, and the one
+survivor (ATM VRP) is a **real but modest, un-leverable crash-risk premium**, not the independent
+alpha the mandate hoped for. This is the truthful answer: **beta-neutral crypto alpha independent of
+the funding-carry factor is genuinely hard**, because the durable premia (carry, basis, VRP, cascade
+fades) are all slices of the same over-leveraged-long short-skew imbalance and are all *compensation
+for tail risk*, not free edge. The most valuable output of this redesign is not a new money-maker —
+it is a rigorously-argued map of *why* the obvious candidates don't work, and one honestly-scored
+premium that could serve as a small diversifying sleeve if sized as insurance, not alpha.
+
+The remaining pre-capital checks (per the panel) are documented but not yet run: a true
+daily-delta-hedged straddle path simulation to measure hedge-error *variance* (not just drift), and a
+stressed-tape spread sample (FTX week) instead of the calm 2026 chain.

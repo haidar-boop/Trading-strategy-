@@ -75,3 +75,19 @@ def test_score_series_needs_min_length():
     from phase2.coilbt.vrp_book import score_series
     import numpy as np
     assert score_series(np.array([1.0, 2.0, 3.0])) is None
+
+
+def test_tradeable_monthly_one_row_per_month_variance_space():
+    from phase2.coilbt.vrp_test import tradeable_monthly
+    day0 = 1_609_459_200_000
+    days = day0 + np.arange(90) * MS_PER_DAY   # 3 months
+    m = pd.DataFrame({
+        "day_ms": days, "dvol_close": np.full(90, 60.0), "rv_fwd": np.full(90, 50.0),
+        "vrp": np.full(90, 10.0), "day": pd.to_datetime(days, unit="ms", utc=True),
+    })
+    g = tradeable_monthly(m, roll_day=15, variance_space=True)
+    assert len(g) == 3                          # ONE straddle per month, not 90 overlapping
+    # variance-space P&L (60^2-50^2)/(2*60) = 1100/120 = 9.1667
+    assert np.allclose(g["gross"], (60.0**2 - 50.0**2) / (2 * 60.0))
+    # variance-space < linear IV-RV (=10) because of convexity normalization
+    assert g["gross"].iloc[0] < 10.0

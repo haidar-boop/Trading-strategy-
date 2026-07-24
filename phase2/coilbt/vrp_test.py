@@ -101,6 +101,28 @@ def build_vrp(currency, spot, start, end, horizon_days=30):
     return m.reset_index(drop=True)
 
 
+def tradeable_monthly(m, roll_day=15, variance_space=True):
+    """TRADEABLE single-straddle-per-month series (fixes the overlapping-window smoother in
+    monthly_vrp, which averaged ~30 overlapping daily forward-vol windows — not something you can
+    trade). Selects ONE observation per calendar month (the day nearest roll_day) = the one straddle
+    you actually sell that month, and books the short-variance-swap P&L in VARIANCE space
+    (IV^2 - RV^2)/(2*IV) vol points (captures the negative convexity the linear IV-RV hides), or the
+    linear IV-RV if variance_space=False."""
+    m = m.copy()
+    m["day_dt"] = m["day"].dt.tz_localize(None)
+    m["ym"] = m["day_dt"].dt.to_period("M")
+    m["dom"] = m["day_dt"].dt.day
+    rows = []
+    for _, sub in m.groupby("ym"):
+        i = (sub["dom"] - roll_day).abs().idxmin()
+        rows.append(sub.loc[i])
+    g = pd.DataFrame(rows).reset_index(drop=True)
+    iv, rv = g["dvol_close"].to_numpy(), g["rv_fwd"].to_numpy()
+    g["gross"] = (iv ** 2 - rv ** 2) / (2 * iv) if variance_space else (iv - rv)
+    return g[["ym", "dvol_close", "rv_fwd", "gross"]].rename(
+        columns={"dvol_close": "iv", "rv_fwd": "rv"})
+
+
 def monthly_vrp(m, roll_spread_volpts=1.5, hedge_bleed_volpts=1.0):
     """Non-overlapping MONTHLY VRP (avoids overlapping-window autocorrelation). Each month: harvest
     IV-RV once; pay stressed cost = round-trip spread (open+close the straddle) + delta-hedge bleed,
