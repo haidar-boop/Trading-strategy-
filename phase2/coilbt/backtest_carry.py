@@ -53,10 +53,12 @@ def build_aligned(sd: SymbolData, spot_min: pd.DataFrame):
 
 
 def _mark_daily_carry(daily_pnl, daily_basis, qty, basis_entry, basis_exit,
-                      entry_day, exit_day, entry_notional_perp, entry_notional_spot,
-                      exit_notional_perp, exit_notional_spot, leg_cost_frac,
+                      entry_day, exit_day, entry_cost, exit_cost,
                       fund, entry_ms, exit_ms, perp_entry_notional):
-    """Distribute pair P&L across days: basis MTM (telescopes) + funding + 4-leg costs."""
+    """Distribute pair P&L across days: basis MTM (telescopes) + funding + costs.
+    entry_cost / exit_cost are the total $ cost booked on the entry day / exit day (any split
+    of perp/spot fees, spreads, impact, legging slippage) -- passed in so the cost model can be
+    as detailed as needed while the daily-MTM invariant (sum == trade net) stays trivially true."""
     idx = daily_basis.index
     d0 = idx.searchsorted(entry_day)
     d1 = idx.searchsorted(exit_day)
@@ -70,9 +72,9 @@ def _mark_daily_carry(daily_pnl, daily_basis, qty, basis_entry, basis_exit,
         else:
             px = qty * (float(daily_basis.iloc[d - 1]) - float(daily_basis.iloc[d]))
         daily_pnl.iloc[d] += px
-    # costs: entry legs on d0, exit legs on d1
-    daily_pnl.iloc[d0] += -leg_cost_frac * (entry_notional_perp + entry_notional_spot)
-    daily_pnl.iloc[d1] += -leg_cost_frac * (exit_notional_perp + exit_notional_spot)
+    # costs: entry legs booked on d0, exit legs on d1
+    daily_pnl.iloc[d0] += -entry_cost
+    daily_pnl.iloc[d1] += -exit_cost
     # funding (perp short receives when rate>0): -(-1)*rate = +rate on perp notional
     fts, frates = fund.settlements_in(entry_ms, exit_ms)
     for ts, rate in zip(fts, frates):
@@ -106,6 +108,14 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
                              half_spread_bps=costs_cfg.SLIPPAGE_BPS,
                              impact_coef=costs_cfg.IMPACT_COEF, stress_mult=costs_cfg.STRESS_MULT)
     flat_leg = (costs_cfg.TAKER_FEE_BPS + costs_cfg.SLIPPAGE_BPS) * costs_cfg.STRESS_MULT * BPS
+    # #38 asymmetric spot-leg params (Binance spot taker 10bps = 2x perp; + legging slippage)
+    asym = getattr(costs_cfg, "SPOT_ASYMMETRIC", False)
+    smult = costs_cfg.STRESS_MULT
+    spot_fee = getattr(costs_cfg, "SPOT_FEE_BPS", costs_cfg.TAKER_FEE_BPS)
+    spot_spread = getattr(costs_cfg, "SPOT_SLIPPAGE_BPS", costs_cfg.SLIPPAGE_BPS)
+    spot_adv_ratio = getattr(costs_cfg, "SPOT_ADV_RATIO", 1.0)
+    # legging slippage is part of the #38 realism upgrade -> only when the asymmetric model is on
+    legging_frac = (getattr(costs_cfg, "LEGGING_SLIP_BPS", 0.0) * smult * BPS) if asym else 0.0
     exit_fund = p.EXIT_FUND_BPS * BPS
     basis_stop = p.BASIS_STOP_BPS * BPS
     max_hold_ms = consts.MAX_HOLD_DAYS * MS_PER_DAY
@@ -176,12 +186,27 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
         ex_p, ex_s = qty * pp_x, qty * ps_x
         # per-leg cost via the √-impact model, at this entry's participation & vol (fallback flat)
         adv, dvol = adv_t[k], dvol_t[k]
-        if np.isfinite(adv) and adv > 0 and np.isfinite(dvol) and dvol > 0:
-            part = perp_notional / adv
-            leg_cost_frac = impact.round_trip_bps(part, dvol) / 2.0 * BPS   # one leg
+        have_impact = np.isfinite(adv) and adv > 0 and np.isfinite(dvol) and dvol > 0
+        if not asym:
+            # legacy symmetric model: one leg fraction for all 4 legs, perp ADV
+            if have_impact:
+                leg_frac = impact.round_trip_bps(perp_notional / adv, dvol) / 2.0 * BPS
+            else:
+                leg_frac = flat_leg
+            perp_leg, spot_leg = leg_frac, leg_frac
         else:
-            leg_cost_frac = flat_leg
-        cost = leg_cost_frac * (en_p + en_s + ex_p + ex_s)          # 4 taker legs
+            # #38 asymmetric: spot leg (10bps fee, spot ADV) costs ~2x the perp leg (5bps, perp ADV)
+            vol_bps = (dvol * 1e4) if have_impact else 0.0
+            perp_imp = costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(perp_notional / adv) if have_impact else 0.0
+            spot_adv = adv * spot_adv_ratio
+            spot_imp = (costs_cfg.IMPACT_COEF * vol_bps * np.sqrt(perp_notional / spot_adv)
+                        if have_impact and spot_adv > 0 else 0.0)
+            perp_leg = (costs_cfg.TAKER_FEE_BPS + costs_cfg.SLIPPAGE_BPS + perp_imp) * smult * BPS
+            spot_leg = (spot_fee + spot_spread + spot_imp) * smult * BPS
+        # legging slippage booked once per pair establishment (entry and exit), on the pair notional
+        entry_cost = perp_leg * en_p + spot_leg * en_s + legging_frac * perp_notional
+        exit_cost = perp_leg * ex_p + spot_leg * ex_s + legging_frac * perp_notional
+        cost = entry_cost + exit_cost
         net = price_pnl + funding_pnl - cost
 
         entry_day = pd.Timestamp((entry_ms // MS_PER_DAY) * MS_PER_DAY, unit="ms", tz="UTC")
@@ -192,7 +217,7 @@ def run_symbol_carry(sd: SymbolData, spot_min: pd.DataFrame, variant: VariantCar
             qty=qty, notional=perp_notional, price_pnl=price_pnl, funding_pnl=funding_pnl,
             cost=cost, net_pnl=net, reason=reason))
         _mark_daily_carry(daily_pnl, daily_basis, qty, basis_entry, basis_exit,
-                          entry_day, exit_day, en_p, en_s, ex_p, ex_s, leg_cost_frac,
+                          entry_day, exit_day, entry_cost, exit_cost,
                           fund, entry_ms, exit_ms, perp_notional)
 
         exit_k = int(np.searchsorted(dt, exit_ms, side="right"))

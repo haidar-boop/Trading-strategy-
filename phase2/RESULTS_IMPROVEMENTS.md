@@ -15,17 +15,19 @@
 | 3,10,20 | Funding **prediction**/persistence + "why is funding high" | ✅ done — **measured negative for point-forecast; only the squeeze RISK gate survives** |
 | 2 | Regime classifier | ⏳ pending (HMM already ported) |
 | 13 | Better exit logic (forecast/OI/vol) | ⏳ pending (depends on #3) |
-| 4 | Spot-leg execution realism | ⏳ pending |
+| 4 | Spot-leg execution realism | ✅ done — **spot taker is 2× perp; corrected cost ~halves net** |
 | 8,11 | Dynamic sizing / portfolio optimization | ⏳ pending |
-| 17 | Confidence intervals / param stability | ⏳ pending (quick) |
+| 17 | Confidence intervals / param stability | ✅ done — sign robust (P>99%), magnitude CI wide (6×) |
 | 12 | Stablecoin / depeg risk | ⏳ pending (discussion + scenario) |
 
-Done this pass: **8 of the substantive items + the data roadmap**, all committed with real measured
-results. The headline conceptual upgrade **#3/#10/#20 (predict funding instead of react)** is now
-built and **measured — and the answer is honest and mostly negative**: point-forecasting funding
-does not beat the naive threshold at the entry decision, and the exogenous "why is funding high"
-features are symbol-unstable (overfitting). The only piece that survives is the **squeeze-rejection
-RISK gate**, kept as measured tail insurance (near-zero in-sample cost), not as a return edge.
+Done this pass: **10 of the substantive items + the data roadmap**, all committed with real measured
+results. Two headline outcomes: (1) **#3/#10/#20 (predict funding)** — point-forecasting funding does
+not beat the naive threshold at the entry decision; only the **squeeze-rejection RISK gate** survives,
+as tail insurance. (2) **#4 (spot execution realism)** — correcting the under-charged spot leg
+(spot taker is 2× perp + legging slippage) **roughly halves the net** and pushes 2023/2024 to
+break-even; the previous carry numbers were too optimistic. **#17 (CIs)** confirms the surviving edge
+is reliably *positive in sign* (P>99%) but *wide in magnitude* (~6× CI), living in a smooth parameter
+plateau. The honest picture keeps getting more sober as the modeling gets more realistic.
 
 
 
@@ -184,6 +186,58 @@ filter with a measured (near-zero) in-sample cost.
 
 Leakage is pinned by `test_funding_predict.py`: a walk-forward fed **pure-noise features** must
 score OOS R² ≈ 0 — if the pipeline peeked at the future it couldn't. It scores < 0.05. ✅
+
+---
+
+## #4 Spot-leg execution realism — DONE (and it's a material honesty correction)
+
+The cost model applied ONE symmetric per-leg cost using perp ADV for all four legs. Research
+(cited, `RESULTS_EXECUTION.md`) shows that is wrong by construction: **Binance SPOT taker is 10 bps
+— 2× the PERP taker (5 bps)** — and the model omitted **legging slippage** (the two legs fill on
+two matching engines 1–3s apart; the price drift lands in your entry basis, ~1–3 bps/side). The
+corrected model (`SPOT_ASYMMETRIC`, default on) charges each leg separately (perp 5+0.5 bps at perp
+ADV; spot 10+1 bps at spot ADV ≈ perp/6.5) plus 2 bps legging per entry and per exit.
+
+**Effect — the corrected (higher) cost roughly HALVES net and kills the marginal years:**
+
+| slice | net (old symmetric) | Sharpe (old) | **net (#38 corrected)** | **Sharpe (#38)** |
+|---|---|---|---|---|
+| all 10 symbols | +3,147 | 5.58 | **+1,627** | **2.43** |
+| BTC+ETH | +1,478 | 4.20 | **+771** | **1.83** |
+| 2021 (bull) | +2,536 | 7.22 | +1,662 | 4.07 |
+| 2023 | +107 | 1.92 | **−64** | **−0.92** |
+| 2024 (ETF) | +504 | 4.01 | **+29** | **0.14** |
+
+Cost is now **~73% of gross funding** (was ~50%). The edge is even more concentrated in the 2021
+euphoria; 2023 goes negative and 2024 is a rounding error. This is the single biggest downward
+revision in the project — the previous carry numbers were too optimistic because the spot leg was
+under-charged. Round-trip cost per trade: ~40 bps realistic (was ~28). `SPOT_ASYMMETRIC=False`
+recovers the old model for comparison; both are covered by tests.
+
+---
+
+## #17 Confidence intervals + parameter stability — DONE
+
+`robustness_carry.py`. CIs on the **per-trade** return series (idle days make the daily Sharpe
+meaningless — the #39 research and our own 0.10-vs-0.95 daily/per-trade gap both say so), via
+**stationary bootstrap** (Politis-Romano) with a **circular-block** co-primary, a block-length
+ladder, and the Lo(2002) iid SE as a reference. Default config (EF1.5/XF0.5/BS100, 56 BTC+ETH
+trades, corrected #38 cost):
+
+| metric | point | 90% CI | P(>0) |
+|---|---|---|---|
+| net P&L | +$771 | **[+$229, +$1,362]** | **99.4%** |
+| per-trade Sharpe | 0.286 | [0.118, 0.440] (stationary) / [0.114, 0.450] (circular — **agree**) | 99.4% |
+
+- **The SIGN is robust, the MAGNITUDE is not.** P(net>0)=99.4% but the 90% net CI spans ~6× ($229
+  to $1,362). Honest statement: "reliably positive, but you cannot pin the size."
+- Block ladder (L=1→8) barely widens the CI (0.10–0.45 → 0.15–0.41), and block SE (0.099) is
+  *below* the iid SE (0.136) — the bets are **near-independent**, no autocorrelation risk inflation.
+- **Parameter stability:** 22/33 grid cells net-positive. The positive region (**entry ≥ 1.5 bps,
+  exit ≤ 0.5**) is a **smooth monotonic plateau** — net rises steadily with entry-threshold and
+  looser basis-stop, no lone lucky cell (within-positive-region best/median = ~1.2×). The negative
+  cells are all `entry = 1.0 bps`: entering that low simply does not cover the corrected 4-leg cost.
+  So the strategy is robust *within its sane parameter region* and correctly unprofitable outside it.
 
 ---
 

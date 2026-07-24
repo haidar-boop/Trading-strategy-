@@ -64,22 +64,41 @@ def test_accounting_invariant_carry():
         assert abs(net - float(dpnl.sum())) < 1e-6, f"MTM mismatch EF={ef}"
 
 
-def test_four_leg_cost_charged():
-    # cost per trade must equal (fee+slip)*(4 legs' notional) = leg*(en_p+en_s+ex_p+ex_s)
+def test_symmetric_fallback_four_leg_cost():
+    # SPOT_ASYMMETRIC=False recovers the legacy symmetric model: cost == (fee+slip)*(4 legs).
     closes = [100.0] * 200
     sd = make_symbol_data(closes, funding_rate=0.0005)
     spot = _spot_from_perp(sd, basis_frac=0.0)
     tbl = build_carry_table(sd, spot, ConstantsCarry(), FiltersCarry())
     aligned = build_aligned(sd, spot)
     v = VariantCarry(ParamsCarry(ENTRY_FUND_BPS=1.0, EXIT_FUND_BPS=0.0))
-    # STRESS_MULT=1 and flat prices (daily_vol=0 -> impact falls back to flat leg) isolates
-    # the 4-leg structure: cost == (fee+slip) * (4 legs' notional).
     trades, _ = run_symbol_carry(sd, spot, v, ConstantsCarry(), FiltersCarry(),
-                                 CostsCarry(STRESS_MULT=1.0), 10_000.0, tbl, aligned)
+                                 CostsCarry(STRESS_MULT=1.0, SPOT_ASYMMETRIC=False),
+                                 10_000.0, tbl, aligned)
     leg = (5.0 + 2.0) * 1e-4
     for t in trades:
-        assert t.cost > 3.5 * leg * t.notional   # ~4 legs, allowing basis/price drift
-        assert t.cost < 4.5 * leg * t.notional
+        assert 3.5 * leg * t.notional < t.cost < 4.5 * leg * t.notional
+
+
+def test_asymmetric_spot_cost_is_higher():
+    # #38: the spot leg (10bps taker) is ~2x the perp leg (5bps), plus 2bps legging per side.
+    # With flat prices (impact=0) and STRESS_MULT=1: cost/trade ~= (perp_leg + spot_leg + legging)*2*N
+    #   perp_leg = 7bps, spot_leg = 11bps, legging = 2bps -> 20bps/side -> ~40bps/trade.
+    closes = [100.0] * 200
+    sd = make_symbol_data(closes, funding_rate=0.0005)
+    spot = _spot_from_perp(sd, basis_frac=0.0)
+    tbl = build_carry_table(sd, spot, ConstantsCarry(), FiltersCarry())
+    aligned = build_aligned(sd, spot)
+    v = VariantCarry(ParamsCarry(ENTRY_FUND_BPS=1.0, EXIT_FUND_BPS=0.0))
+    cfg = CostsCarry(STRESS_MULT=1.0)   # SPOT_ASYMMETRIC=True by default
+    sym = CostsCarry(STRESS_MULT=1.0, SPOT_ASYMMETRIC=False)
+    tr_a, _ = run_symbol_carry(sd, spot, v, ConstantsCarry(), FiltersCarry(), cfg, 10_000.0, tbl, aligned)
+    tr_s, _ = run_symbol_carry(sd, spot, v, ConstantsCarry(), FiltersCarry(), sym, 10_000.0, tbl, aligned)
+    # asymmetric must cost strictly more than symmetric (spot 2x + legging)
+    assert sum(t.cost for t in tr_a) > sum(t.cost for t in tr_s)
+    per_side = (7.0 + 11.0 + 2.0) * 1e-4   # perp + spot + legging
+    for t in tr_a:
+        assert 1.9 * per_side * t.notional < t.cost < 2.1 * per_side * t.notional
 
 
 def test_entry_threshold_gates():

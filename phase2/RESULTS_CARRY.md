@@ -1,5 +1,32 @@
 # Phase 2c — Delta-Neutral Cash-and-Carry Results (expanded universe, stressed costs)
 
+> ### ⚠️ UPDATE (#38 spot-execution correction) — the "near-miss" was too optimistic
+>
+> The numbers below the banner were computed with a **symmetric** per-leg cost that under-charged
+> the spot leg. After modeling spot execution honestly (#4/#38: Binance **spot taker is 2× the perp
+> taker**, plus ~2 bps legging slippage per side — see `RESULTS_EXECUTION.md`), the verdict gets
+> **worse and cleaner**:
+>
+> | metric (10-symbol OOS, stressed 2×) | old (symmetric cost) | **corrected (#38)** |
+> |---|---|---|
+> | OOS net P&L | +$732 | **+$270** (funding +1,677 · basis +108 · **cost −1,515**) |
+> | OOS profit factor | 21.8 | **2.90** |
+> | per-trade Sharpe | +0.949 | **+0.350** |
+> | **per-trade DSR (effective-N)** | **0.962 (borderline PASS)** | **0.001 (clear FAIL)** |
+> | daily DSR | 0.000 | 0.000 |
+> | PBO / CSCV | 0.001 | **0.001** (still not overfit) |
+> | verdict | near-miss (5/8) | **FAIL — DSR, MinTRL, per-trade DSR all fail** |
+>
+> **The single borderline "pass" this strategy ever had (per-trade DSR at effective-N = 0.962) was
+> resting on the under-charged spot leg.** With realistic costs, cost rises to ~73% of gross funding
+> and the risk-adjusted edge no longer clears the deflation bar on ANY ruler. What survives: it is
+> still net-positive, still not overfit (PBO 0.001), still cost-*robust in sign* — but it is now an
+> unambiguous FAIL on the pre-registered bar, not a near-miss. The honest headline is: **more
+> realistic execution modeling turned a near-miss into a clear no.** Everything below is retained for
+> the record but is superseded by this correction.
+
+---
+
 **Verdict: NOT validated — but the strongest, most robust, non-overfit result in the project, and
 a genuine near-miss.** On a 10-symbol universe, under **stressed 2× √-impact costs**, over 8
 walk-forward folds, the delta-neutral carry **clears 5 of 8 gates** — including the trade-count

@@ -51,10 +51,24 @@ class CostsCarry:
     # all x STRESS_MULT. At retail size (participation ~5e-6 on a $1B-ADV symbol) the impact
     # term is ~0.2 bps, so the binding stress is the multiplier on fee+spread. The pass/fail
     # run uses STRESS_MULT=2.0 (the ~2x-cost regime the carry survived in sensitivity testing).
-    TAKER_FEE_BPS: float = 5.0
-    SLIPPAGE_BPS: float = 2.0        # treated as the half-spread in the impact model
+    #
+    # NOTE: TAKER_FEE_BPS/SLIPPAGE_BPS are the PERP-leg params (kept for back-compat with the
+    # symmetric model and other engines). #38 adds an ASYMMETRIC spot leg + legging slippage
+    # below — Binance SPOT taker (10 bps) is 2x the PERP taker (5 bps), so a symmetric per-leg
+    # cost understates the real cost. Sources: Binance spot/futures fee pages (VIP0, cited in
+    # RESULTS_EXECUTION.md). Set SPOT_ASYMMETRIC=False to recover the old symmetric behaviour.
+    TAKER_FEE_BPS: float = 5.0       # PERP taker fee (VIP0)
+    SLIPPAGE_BPS: float = 2.0        # PERP half-spread in the impact model (stress-inflated design margin)
     IMPACT_COEF: float = 0.5
     STRESS_MULT: float = 2.0         # stressed pass/fail cost; set 1.0 for the base (unstressed) view
+
+    # --- #38 spot-leg execution realism (asymmetric) ---
+    SPOT_ASYMMETRIC: bool = True     # model the spot leg separately from the perp leg
+    SPOT_FEE_BPS: float = 10.0       # Binance SPOT taker VIP0 = 10 bps (2x perp); 7.5 with BNB
+    SPOT_SLIPPAGE_BPS: float = 1.0   # spot half-spread (BTC ~0.75, ETH ~1.25 -> 1.0 default)
+    SPOT_ADV_RATIO: float = 0.15     # spot ADV ~= perp ADV / ~6.5 (perp is 5-10x more liquid)
+    LEGGING_SLIP_BPS: float = 2.0    # execution-basis slippage per pair-establishment (entry & exit);
+                                     # ~1 bps/sec of BTC vol * ~1-3s leg gap. Stressed ~8 bps.
 
 
 @dataclass(frozen=True)
