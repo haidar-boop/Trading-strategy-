@@ -53,6 +53,24 @@ def compute_pbo(trial_oos: dict, n_subsets: int = 14):
     return pbo, len(cols)
 
 
+def compute_effective_n(trial_oos: dict) -> float:
+    """Effective number of INDEPENDENT trials from the grid's OOS return matrix (participation
+    ratio of the trial correlation matrix). Corrects an over-inflated DSR deflation when configs
+    are highly correlated. Always <= raw N — reported alongside, never instead of, the raw-N DSR."""
+    from .quantlib.effn import effective_n_participation
+    cols, length = [], None
+    for r in trial_oos.values():
+        if r is None or r.size == 0:
+            continue
+        if length is None:
+            length = r.size
+        if r.size == length:
+            cols.append(r.to_numpy(dtype=float))
+    if len(cols) < 2:
+        return float(len(cols))
+    return effective_n_participation(np.column_stack(cols))
+
+
 def rich_metrics(returns) -> dict:
     """Sortino/Calmar/MaxDD/Ulcer/CVaR summary of a daily-return series (ported metrics)."""
     r = np.asarray(returns, dtype=float)

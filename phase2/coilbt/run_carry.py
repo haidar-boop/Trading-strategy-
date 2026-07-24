@@ -25,11 +25,11 @@ from .strategy_carry import build_carry_table
 from .montecarlo import block_bootstrap_envelope
 from .walkforward import generate_folds, trial_sharpes, walk_forward_select
 from .run_phase2 import (REF_EQUITY, ARTIFACTS, _beta_in_costume, _portfolio_daily_returns,
-                         _verdict, compute_pbo, rich_metrics)
+                         _verdict, compute_pbo, compute_effective_n, rich_metrics)
 from .run_fef import _best_month_excision
 
 
-def _per_trade_dsr(oos_meta, variant_trades, oos_windows, n_conservative):
+def _per_trade_dsr(oos_meta, variant_trades, oos_windows, n_conservative, n_eff=None):
     """Per-TRADE risk-adjusted evaluation — the fair ruler for a low-frequency strategy.
 
     Daily-return Sharpe dilutes a 35-trade strategy across ~1400 flat days (understating it);
@@ -61,16 +61,20 @@ def _per_trade_dsr(oos_meta, variant_trades, oos_windows, n_conservative):
     sr = stats.sharpe_ratio(dep)
     dsr_cons = stats.deflated_sharpe_ratio(dep, trial_sh, n_trials=n_conservative)
     dsr_own = stats.deflated_sharpe_ratio(dep, trial_sh, n_trials=max(2, trial_sh.size))
-    mtrl = stats.min_track_record_length(dep, sr_star=dsr_own.sr_star_deflated)
+    n_eff_used = int(round(n_eff)) if n_eff else max(2, trial_sh.size)
+    n_eff_used = max(2, min(n_eff_used, max(2, trial_sh.size)))
+    dsr_neff = stats.deflated_sharpe_ratio(dep, trial_sh, n_trials=n_eff_used)
+    mtrl = stats.min_track_record_length(dep, sr_star=dsr_neff.sr_star_deflated)
     return {
         "n_trades": int(dep.size),
         "per_trade_sharpe": float(sr),
         "psr_vs_0": float(stats.probabilistic_sharpe_ratio(dep, sr_star=0.0)),
         "dsr_conservative_N": float(dsr_cons.dsr), "n_conservative": int(n_conservative),
         "dsr_own_N": float(dsr_own.dsr), "n_own": int(max(2, trial_sh.size)),
-        "deflation_benchmark": float(dsr_own.sr_star_deflated),
+        "dsr_effective_N": float(dsr_neff.dsr), "n_eff": n_eff_used,
+        "deflation_benchmark": float(dsr_neff.sr_star_deflated),
         "min_trl_trades": float(mtrl),
-        "passes_own": bool(dsr_own.dsr >= 0.95 and dep.size >= mtrl),
+        "passes_eff": bool(dsr_neff.dsr >= 0.95 and dep.size >= mtrl),
     }
 
 
@@ -177,7 +181,9 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
     excision = _best_month_excision(deployed)
     pbo, pbo_n = compute_pbo(trial_oos)
     rmets = rich_metrics(r_oos)
-    ptd = _per_trade_dsr(oos_meta, variant_trades, oos_windows, spec.TRIAL_COUNT_N)
+    n_eff = compute_effective_n(trial_oos)   # effective independent trials (configs are correlated)
+    dsr_neff = stats.deflated_sharpe_ratio(r_oos, ts, n_trials=max(2, int(round(n_eff))))
+    ptd = _per_trade_dsr(oos_meta, variant_trades, oos_windows, spec.TRIAL_COUNT_N, n_eff=n_eff)
 
     checks = {
         "dsr_pass": bool(dsr.dsr >= spec.DSR_CONF),
@@ -207,6 +213,7 @@ def run(symbols, start, end, spec, consts, filters, costs_cfg, notional_frac=0.5
             "dsr_deflation_benchmark": dsr.sr_star_deflated, "dsr_n_trials": dsr.n_trials,
             "min_trl_obs": dsr.min_trl, "profit_factor": pf,
             "dsr_own_search": dsr_own.dsr, "dsr_own_n": dsr_own.n_trials,
+            "dsr_effective_N": dsr_neff.dsr, "effective_n": float(n_eff),
             "total_funding_pnl": float(sum(t.funding_pnl for t in oos_meta)),
             "total_basis_pnl": float(sum(t.price_pnl for t in oos_meta)),
             "total_cost": float(sum(t.cost for t in oos_meta)),
@@ -243,11 +250,13 @@ def _print_report(r):
     print(f"  OOS Sharpe (ann.)      {m['oos_sharpe_annualized']:+.3f}")
     print(f"  Deflated Sharpe (DSR)  {m['dsr']:.4f}  (benchmark {m['dsr_deflation_benchmark']:.4f}, N={m['dsr_n_trials']})")
     print(f"    DSR own-search        {m['dsr_own_search']:.4f}  (N={m['dsr_own_n']}, this grid only)")
+    print(f"    DSR effective-N       {m['dsr_effective_N']:.4f}  (N_eff={m['effective_n']:.1f}, corrected for correlated configs)")
     pt = m.get("per_trade")
     if pt:
         print(f"  --- PER-TRADE ruler (fair for low frequency; n={pt['n_trades']} trades) ---")
         print(f"  per-trade Sharpe       {pt['per_trade_sharpe']:+.3f}  PSR(0)={pt['psr_vs_0']:.3f}")
         print(f"  per-trade DSR          own-N {pt['dsr_own_N']:.3f} (N={pt['n_own']}) | "
+              f"eff-N {pt['dsr_effective_N']:.3f} (N_eff={pt['n_eff']}) | "
               f"conservative {pt['dsr_conservative_N']:.3f} (N={pt['n_conservative']})")
         print(f"  per-trade MinTRL       {pt['min_trl_trades']:.0f} trades vs {pt['n_trades']} available"
               f"  -> {'ENOUGH' if pt['n_trades'] >= pt['min_trl_trades'] else 'NEED MORE'}")
