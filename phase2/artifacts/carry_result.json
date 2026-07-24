@@ -1,31 +1,46 @@
 {
   "strategy": "Delta-neutral cash-and-carry",
   "window": {
-    "start": "2021-01-01",
-    "end": "2024-12-31",
+    "start": "2020-01-01",
+    "end": "2025-12-31",
     "symbols": [
       "BTCUSDT",
       "ETHUSDT",
-      "SOLUSDT"
+      "SOLUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "BNBUSDT",
+      "ADAUSDT",
+      "LINKUSDT",
+      "AVAXUSDT",
+      "LTCUSDT"
     ]
   },
   "n_variants": 33,
-  "n_folds": 4,
-  "oos_days": 731,
-  "oos_trades": 26,
+  "n_folds": 8,
+  "oos_days": 1461,
+  "oos_trades": 35,
   "exit_reasons": {
-    "funding_decay": 0,
+    "funding_decay": 1,
     "basis_stop": 0,
-    "time_cap": 26
+    "time_cap": 34
   },
   "selected_per_fold": [
     [
+      "2022-01-01",
+      "EF3_XF0_BS200"
+    ],
+    [
+      "2022-07-01",
+      "EF3_XF0_BS200"
+    ],
+    [
       "2023-01-01",
-      "EF3_XF0.5_BS200"
+      "EF3_XF0_BS200"
     ],
     [
       "2023-07-01",
-      "EF3_XF0.5_BS100"
+      "EF3_XF0_BS200"
     ],
     [
       "2024-01-01",
@@ -34,53 +49,63 @@
     [
       "2024-07-01",
       "EF3_XF0_BS100"
+    ],
+    [
+      "2025-01-01",
+      "EF3_XF0_BS100"
+    ],
+    [
+      "2025-07-01",
+      "EF3_XF0_BS100"
     ]
   ],
   "metrics": {
-    "oos_sharpe_annualized": 2.8324984104124993,
-    "psr_vs_0": 0.9999930194818266,
-    "dsr": 1.0484233459813467e-16,
-    "dsr_deflation_benchmark": 0.42865345229723034,
+    "oos_sharpe_annualized": 1.8888440035165643,
+    "psr_vs_0": 0.9999852758451324,
+    "dsr": 3.0334785306382565e-30,
+    "dsr_deflation_benchmark": 0.36788380451145297,
     "dsr_n_trials": 1000,
     "min_trl_obs": Infinity,
-    "profit_factor": 210.03878986950264,
-    "total_funding_pnl": 1310.9643,
-    "total_basis_pnl": 79.20714767739216,
-    "total_cost": 766.9123825445928,
-    "total_net_pnl": 623.2590651327993,
-    "ex_best_month": 0.032927234138746014,
-    "best_month_total": 0.06232590651327994,
-    "mc_real_terminal": 1.0641779680738774,
-    "mc_p5_terminal": 1.029489192687814,
-    "jitter_base_terminal": -5644.308360148978,
-    "jitter_median_terminal": -5595.013367465426,
-    "beta_corr_to_btc": -0.09065621984394877,
-    "pbo": 0.0,
+    "profit_factor": 21.772766129063932,
+    "dsr_own_search": 1.7069793204701673e-09,
+    "dsr_own_n": 33,
+    "total_funding_pnl": 1676.73205,
+    "total_basis_pnl": 107.66127792909855,
+    "total_cost": 1052.6982156757038,
+    "total_net_pnl": 731.6951122533949,
+    "ex_best_month": 0.03778038285455483,
+    "best_month_total": 0.07316951122533949,
+    "mc_real_terminal": 1.075709616214465,
+    "mc_p5_terminal": 1.0302801583076018,
+    "jitter_base_terminal": 731.6951122533949,
+    "jitter_median_terminal": 733.2146958542191,
+    "beta_corr_to_btc": -0.05728320838900238,
+    "pbo": 0.0011655011655011655,
     "pbo_n_configs": 33,
     "rich": {
-      "CAGR": 0.031546130005706274,
-      "AnnVol": 0.01098688089752447,
-      "Sharpe": 2.8324984104124993,
-      "Sortino": 2.1127653313454715,
-      "Calmar": 6.293041111994876,
-      "MaxDD": -0.005012859354371235,
-      "Ulcer": 0.15769316683436477,
-      "VaR95": 0.0001295166496935792,
-      "CVaR95": 0.0011940414830023838,
-      "TailRatio": 7.131821274757765,
-      "Omega": 2.4045750308186573
+      "CAGR": 0.018399879421693743,
+      "AnnVol": 0.00967780151354922,
+      "Sharpe": 1.8888440035165643,
+      "Sortino": 1.0495222741663723,
+      "Calmar": 1.9939003402555686,
+      "MaxDD": -0.009228083796472664,
+      "Ulcer": 0.3512592946443378,
+      "VaR95": -0.0,
+      "CVaR95": 4.211513477606708e-05,
+      "TailRatio": NaN,
+      "Omega": 2.297511996955549
     }
   },
   "checks": {
     "dsr_pass": false,
     "pf_pass": true,
-    "trades_pass": false,
+    "trades_pass": true,
     "mintrl_pass": false,
     "single_episode_pass": true,
     "pbo_pass": true,
     "mc_envelope_pass": false,
-    "mc_jitter_pass": false
+    "mc_jitter_pass": true
   },
-  "verdict": "INSUFFICIENT EVIDENCE \u2014 do not deploy (OOS trades 26 < floor 30); statistical checks are moot below the floor.",
-  "runtime_sec": 21.5
+  "verdict": "FAIL \u2014 clears trade floor but misses: dsr_pass, mintrl_pass, mc_envelope_pass",
+  "runtime_sec": 97.2
 }
