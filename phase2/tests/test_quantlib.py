@@ -64,6 +64,20 @@ def test_metrics_sanity():
     assert qm.sharpe(np.array([0.01, 0.01, 0.01])) != qm.sharpe(np.array([0.01, 0.01, 0.01]))  # 0 std -> nan
 
 
+def test_effective_n():
+    from phase2.coilbt.quantlib.effn import effective_n_participation, effective_n_clusters
+    rng = np.random.default_rng(0)
+    indep = rng.normal(0, 1, (400, 15))
+    assert effective_n_participation(indep) > 10          # ~15 independent
+    assert effective_n_clusters(indep) > 10
+    base = rng.normal(0, 1, (400, 1))
+    ident = base + rng.normal(0, 0.005, (400, 15))
+    assert effective_n_participation(ident) < 2           # ~1 (all identical)
+    assert effective_n_clusters(ident) <= 2
+    # N_eff never exceeds the raw trial count
+    assert effective_n_participation(indep) <= 15 + 1e-6
+
+
 def test_impact_cost_monotone():
     m = ImpactCostModel()
     assert m.round_trip_bps(0.10, 0.02) > m.round_trip_bps(0.01, 0.02)   # more participation costs more
