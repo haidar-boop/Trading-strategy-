@@ -165,3 +165,67 @@ overlays target is a rare tail the calm sample does not contain, and the carry's
 threshold already keeps it flat during those events.** The overlays would protect against a danger
 the strategy is structurally already avoiding. Next: **Test 3 — ATM variance-risk premium**, the one
 candidate with a genuinely orthogonal factor (requires Deribit DVOL + free HF spot for realized vol).
+
+## Test 3 — ATM variance-risk premium: ✅ PASSES both parts (the one surviving edge)
+
+`vrp_test.py`. Real Deribit DVOL (30d ATM implied vol, free public API) vs realized vol over the next
+30d from the cached spot data; 46 non-overlapping months, 2021–2025.
+
+**(a) Net-of-cost — PASSES robustly.** Gross VRP (IV − RV) is large and survives aggressive stress:
+
+| ccy | months | mean IV | mean RV | gross VRP | % months net+ (2.5 volpt cost) | survives cost up to |
+|---|---|---|---|---|---|---|
+| BTC | 46 | 67.1 | 56.0 | **+11.1 volpts** | 76% | ~10 volpts round-trip |
+| ETH | 46 | 78.1 | 70.5 | **+7.6 volpts** | 65% | ~7 volpts round-trip |
+
+**(b) Independence — PASSES.** Spearman(VRP monthly, carry monthly) = **−0.14 (BTC), −0.21 (ETH)**
+overall; **−0.02 / −0.11 in the body** (worst-15% VRP months excluded). Genuinely uncorrelated.
+
+**The feared shared crash did NOT materialize in-sample.** The redesign worried VRP and carry
+co-crash. But the VRP's worst months (RV ≫ IV) are 2021-04 (−44 volpts ETH), 2021-05, 2024-02 — and
+the carry was **flat or +$280** in exactly those months. They lose on *different* events: VRP loses
+on vol-explosion (often rallies, where the carry is happily harvesting high funding); the carry loses
+on funding collapse. Different Greek, different regime — as the economic thesis predicted.
+
+### The honest caveats (this is a pilot signal, not a validated book)
+
+1. **Index-level proxy, not a tradeable P&L.** DVOL is not directly tradeable; a real short-vol book
+   uses Deribit options with real bid/ask (quoted in vol points), gamma-hedge slippage, and margin.
+   The "vol points" here are a clean proxy. I stressed the cost to 10 volpts round-trip and BTC still
+   survives — but the real book must be validated on actual option quotes before any capital.
+2. **Negative skew is real risk, not free money.** The positive mean IS the insurance premium; 24–35%
+   of months lose, and a true tail (a 2020-03-12 / LUNA-scale vol explosion beyond the 2021–2025
+   DVOL sample) could erase many months of premium in one. This must be sized small and hard-stopped.
+   The redesign's tail-overlays were falsified (Tests 1–2), so tail risk here must be managed by
+   SIZING and stops, not a hedge sleeve.
+3. **46 months, one broad vol regime.** DVOL history starts ~2021 and excludes March-2020. The
+   premium's persistence is an economic bet (insurance demand), not a proven constant.
+4. **Wings deliberately excluded** — correct per design: the ATM slice is the independent, feasible
+   one; the fat wing premium is tail-correlated with carry and unmodelable on free data.
+
+---
+
+# Redesign verdict — one real independent edge out of seven
+
+| Candidate | Economic screen | Falsification | Outcome |
+|---|---|---|---|
+| Calendar basis | ❌ same leverage-demand factor | — | rejected |
+| Cross-exchange funding | ❌ crowded / uncapturable | — | rejected |
+| Liquidation fade | ❌ competed at retail latency | — | rejected |
+| OI crowding fade | ❌ commoditized / co-crashes | — | rejected |
+| Stablecoin de-risk overlay | survived as overlay | ❌ **redundant with funding threshold** | rejected |
+| Funding-flip hazard overlay | survived as overlay | ❌ **no flip population to learn from** | rejected |
+| **ATM variance-risk premium** | ✅ orthogonal factor | ✅ **net-of-cost + independent** | **PURSUE (pilot)** |
+
+**Bottom line, honestly:** the mandate was to find independent sources of edge with real economic
+rationale. Of seven candidates, six fail — four on economics (they are the same leverage-demand
+short-skew trade re-expressed) and two more on empirical falsification (they target a flip/stress tail
+that funding persistence makes almost nonexistent in-sample, and that the carry already sidesteps by
+going flat). **Exactly one survives both screens: the ATM variance-risk premium** — a genuinely
+orthogonal second-moment factor, large and cost-robust in this sample, and empirically uncorrelated
+with the carry (even in the carry's bad months). It is the real deliverable of this redesign.
+
+It is NOT a finished strategy: it is an index-proxy pilot with genuine negative-skew tail risk that
+must be validated on real Deribit option quotes and sized as a small satellite. But it is the first
+new edge in this project with an economic reason to exist AND empirical support AND independence from
+the carry — which is precisely what "increase the economic edge, not the backtest" asked for.
