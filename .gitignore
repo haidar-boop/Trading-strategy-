@@ -1,9 +1,0 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-.pytest_cache/
-
-# Phase-2 data cache (290MB of downloaded Binance dumps; re-fetch via download.py) and logs
-phase2/artifacts/raw/
-phase2/artifacts/*.log
